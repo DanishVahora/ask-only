@@ -12,11 +12,13 @@ Deadline: **Sat 7 Nov 2026, 09:00 IST** (ETHGlobal Mumbai).
 Answer questions **about** a document without sending the document, under a permission that expires
 on-chain.
 
-- The owner seals a document (AES-GCM in their browser; the server stores ciphertext).
-- They **add a reviewer**: a wallet, and for how long. One EIP-712 signature. That is the only decision
-  the owner ever makes about them. Optionally they can limit what may be asked about.
-- The reviewer's wallet signs **once per permission** (an `AskKey`), letting a key in their browser sign
-  each question. After that, asking is no popup at all, and every question still traces to their wallet.
+- **One wallet popup a week, per browser.** The wallet signs a `Session`: a key this browser generated
+  may sign for it on AskOnly for 7 days. After that, sealing, adding a reviewer, asking, answering,
+  ending and deleting are no popup at all. Records keep both signatures, so each still traces to a wallet.
+- The owner seals a document (AES-GCM in their browser; the server stores ciphertext). Sealing is signed.
+- They **add a reviewer**: a wallet, and for how long. That is the only decision the owner ever makes
+  about them. Optionally they can limit what may be asked about. **There is no question count.**
+- The reviewer's browser signs each question with its session key. Every question traces to their wallet.
 - **The owner's browser answers by itself.** Only it can decrypt. Before it pays for anything it checks
   the owner's signature over the permission and the asker's over the question, so it never takes the
   server's word. It starts with the fewest lines that might answer (identifiers like a PAN held back as
@@ -65,6 +67,26 @@ update has to be added again". End them and add the reviewer again.
 
 ---
 
+## Changed on 7 Nov, from Danish's feedback
+
+- **"Each time users need to confirm."** A `Session` (`src/auth/typed.mjs`) replaces a popup per seal,
+  reviewer, ending, deletion and permission. The wallet sees one readable line and the end date in UTC;
+  the server rebuilds that date from `diesAt` and refuses a session that says anything else, that runs
+  past 8 days, or that another wallet signed. A refused session is a 401 with `code: session-expired` or
+  `session-invalid`, and the browser signs in again. The wallet-signed paths, `AskKey` and `Delegation`
+  still work.
+- **"How many times a reviewer can ask."** The `Grant` type lost `usesAllowed`. New grants store `0` and
+  are never `spent`. Old grants that carry a count were signed under `GrantTypesV1` and still hold to it.
+  What stops a runaway script now: 10 questions waiting on one permission, 30 per 10 minutes, then a 429
+  with `retryAfterMs`.
+- **"Why ask for a 0G key here?"** `GET /api/zerog/key` hands the key in `.env` to a page on this machine
+  only (loopback connection, no forwarding headers, Origin and Sec-Fetch-Site must be this app's; everyone
+  else gets a 404, with no CORS headers). The browser still calls 0G itself. `KeySheet` appears only when
+  0G turns down both the owner's key and the machine's.
+- `POST /api/vault` is signed (`Seal`, over the hash of the bytes actually sent).
+
+---
+
 ## Guarantees, each with a script that proves it
 
 | Command | Asserts |
@@ -72,7 +94,8 @@ update has to be added again". End them and add the reviewer again.
 | `npm run smoke` | it imports, boots, and answers |
 | `npm run prove` | two-party: the server pays every write and can author none |
 | `npm run prove:delegation` | the fallback key for another browser is narrow |
-| `npm run prove:asking` | several questions at once, the limit holds, an end is an end, one signature is enough |
+| `npm run prove:session` | a session signs for its wallet and nothing looser; records trace back; no count, and the brake holds |
+| `npm run prove:asking` | several questions at once, an old grant's count holds, an end is an end, one signature is enough |
 | `npm run prove:forget` | only the owner can delete, only the document they named |
 | `npm run prove:integrity` | a signature does what was signed, once; the reviewer's ask key works on its own permission only |
 | `ASKONLY_URL=http://localhost:5174 node web/scripts/verify-check.mjs` | the owner's browser accepts real records and catches every change the server could make |
@@ -91,10 +114,11 @@ harness, not the product.
 1. **The ENS claim is not true of the code.** `docs/SUBMISSION.md` section 4.3 says `hasRoles` is checked in
    the hot path. `mayAsk` is imported in `app/server.mjs` and never called. Danish has to decide: wire it
    into `POST /api/request`, or change the claim.
-2. Commit, push, and flip the GitHub repo public at submission. Nothing from this session is committed.
+2. Push, and flip the GitHub repo public at submission. Commit in small pieces: ETHGlobal may disqualify
+   large single commits.
 3. Demo video, under 3 minutes. Script in `docs/DEMO.md` (updated for the one-signature reviewer).
-4. `POST /api/vault` is still unsigned, so anyone can create a document under any owner's address (it
-   shows up in their list; they cannot open it, and nobody can add a reviewer to it but its owner).
+4. A session cannot be ended early from the server. Signing out drops the key from the browser; a copied
+   key keeps working until its 7 days are up.
 5. **There is no hosted demo.** On any origin but `localhost:5173` the browser cannot reach 0G, and the app
    does not use `/api/ask/relay` or show the operator banner. `docs/SUBMISSION.md` §5 now says so.
 6. From the review, not done: the reviewer's page does not yet verify the answer's signature chain (the
@@ -148,12 +172,17 @@ Verified this way at 01:55 IST: seal, add a reviewer (one `Grant`), the reviewer
 `AskKey`, no more), both answered by the owner's tab in 16s, a reload resumes with no passphrase, End is
 one `Revoke`, Delete is one `Forget`, and Read asks for the passphrase.
 
+Verified again on build 7 (test wallet on `TESTWALLET_PORT=5311`): a whole run of seal, add a reviewer,
+two questions, both answered on the machine's 0G key, End and Delete took exactly two signatures, one
+`Session` per wallet.
+
 ---
 
 ## Shape of the code
 
 ```
-src/auth/typed.mjs      EIP-712: Grant, Request, AskKey, Answer, Delegation, Forget, Revoke, Presence; recordId
+src/auth/typed.mjs      EIP-712: Session, Seal, Grant (+V1), Request, AskKey, Answer, Delegation, Forget,
+                        Revoke, Presence; requireParty (wallet or session); recordId
 src/arkiv/ledger.mjs    reads (all createdBy) and writes; settleAnswered / settleRefused re-check inside the queue
 src/arkiv/client.mjs    guardedWrite: one write at a time, waits out a pending nonce, resends only refused sends
 src/ask/questions.mjs   prompts, line selection, identifier masking, extractStages
@@ -163,11 +192,12 @@ app/server.mjs          API; pays gas, verifies signatures, never sees plaintext
 web/src/lib/answering.jsx  THE ENGINE. Above the routes. Verifies, answers, keeps keys, resumes after reload.
 web/src/lib/keystore.js    keys in IndexedDB, and what that does and does not protect
 web/src/lib/askonly.js     crypto, the EIP-712 mirror, the direct enclave call, signedByOwner / signedByAsker
+web/src/lib/session.js     the browser's session key: signs in once, signs everything after
 web/src/lib/questions.js   MIRRORS src/ask/questions.mjs. Prompts must stay byte-identical.
 
-web/src/components/Shell.jsx       the top bar (restyled by the landing session), status, "Add 0G key"
+web/src/components/Shell.jsx       the top bar (restyled by the landing session), status, "Add 0G key" if 0G refuses
 web/src/components/IssueSheet.jsx  add a reviewer: the only decision the owner makes
-web/src/pages/Ask.jsx              the reviewer's thread; Composer holds the AskKey
+web/src/pages/Ask.jsx              the reviewer's thread; asks through the session
 ```
 
 The landing page (`web/src/pages/Landing.jsx`, `web/src/landing.css`, `web/src/components/landing/*`,
