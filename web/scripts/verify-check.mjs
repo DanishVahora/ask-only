@@ -11,6 +11,7 @@
  */
 
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { sealedBody } from "../../scripts/seal.mjs";
 
 import { DOMAIN, TYPES, STATEMENTS, signedByOwner, signedByAsker, sha256hex } from "../src/lib/askonly.js";
 
@@ -37,21 +38,17 @@ const ASKER = privateKeyToAccount(generatePrivateKey());
 const ANSWERING = privateKeyToAccount(generatePrivateKey()); // the key the owner's browser would name
 const ASKKEY = privateKeyToAccount(generatePrivateKey()); // the key the reviewer's browser would hold
 
-const { vaultId } = await api("/api/vault", {
-  owner: OWNER.address, label: "Verify", docKind: "document", sha256: "",
-  iv: Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64"),
-  cipher: `0x${hex(crypto.getRandomValues(new Uint8Array(256)))}`, days: 30,
-});
+const { vaultId } = await api("/api/vault", await sealedBody(OWNER, { label: "Verify" }));
 
 // Exactly what IssueSheet signs and sends.
 const terms = {
   vaultId, verifier: ASKER.address, questionSet: "general", question: "whether I can afford the rent",
-  usesAllowed: 100n, diesAt: BigInt(Date.now() + 10 * 60_000), sessionKey: ANSWERING.address, statement: STATEMENTS.grant,
+  diesAt: BigInt(Date.now() + 10 * 60_000), sessionKey: ANSWERING.address, statement: STATEMENTS.grant,
 };
 const ownerSig = await OWNER.signTypedData({ domain: DOMAIN, types: { Grant: TYPES.Grant }, primaryType: "Grant", message: terms });
 const { grantId } = await api("/api/grant", {
   vaultId, owner: OWNER.address, verifier: ASKER.address, verifierName: "Landlord", questionSet: "general",
-  question: terms.question, usesAllowed: 100, diesAt: Number(terms.diesAt), sessionKey: ANSWERING.address,
+  question: terms.question, diesAt: Number(terms.diesAt), sessionKey: ANSWERING.address,
   threshold: "", ownerSig, minutes: 10, days: null,
 });
 

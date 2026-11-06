@@ -16,8 +16,9 @@
  */
 
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { sealedBody } from "./seal.mjs";
 import {
-  domain, GrantTypes, RequestTypes, AnswerTypes, RevokeTypes, AskKeyTypes,
+  domain, GrantTypesV1 as GrantTypes, RequestTypes, AnswerTypes, RevokeTypes, AskKeyTypes,
   grantMessage, requestMessage, answerMessage, revokeMessage, askKeyMessage,
 } from "../src/auth/typed.mjs";
 
@@ -52,11 +53,7 @@ console.log(`AskOnly — a signature does what was signed, once
   stranger  ${STRANGER.address}`);
 
 const seal = async (owner, label) => {
-  const r = await api("/api/vault", {
-    owner: owner.address, label, docKind: "document", sha256: "",
-    iv: Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64"),
-    cipher: `0x${hex(crypto.getRandomValues(new Uint8Array(256)))}`, days: 30,
-  });
+  const r = await api("/api/vault", await sealedBody(owner, { label }));
   if (r.status !== 200) { bad(`seal failed: ${JSON.stringify(r.data)}`); process.exit(1); }
   return r.data.vaultId;
 };

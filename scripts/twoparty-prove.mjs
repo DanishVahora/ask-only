@@ -10,8 +10,9 @@
  */
 
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { sealedBody } from "./seal.mjs";
 import {
-  GrantTypes, RequestTypes, AnswerTypes, grantMessage, requestMessage, answerMessage, domain,
+  GrantTypesV1 as GrantTypes, RequestTypes, AnswerTypes, grantMessage, requestMessage, answerMessage, domain,
 } from "../src/auth/typed.mjs";
 
 const BASE = process.env.ASKONLY_URL || "http://localhost:5173";
@@ -55,15 +56,7 @@ if (spec.data.paymaster?.address?.toLowerCase() === OWNER.address.toLowerCase())
 step(1, "Owner seals a document");
 const cipher = crypto.getRandomValues(new Uint8Array(1024));
 const vault = await api("/api/vault", {
-  body: {
-    owner: OWNER.address,
-    label: "Payslip - two-party test",
-    docKind: "payslip",
-    sha256: await sha256hex("gross 68000"),
-    iv: Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64"),
-    cipher: `0x${Buffer.from(cipher).toString("hex")}`,
-    days: 180,
-  },
+  body: await sealedBody(OWNER, { label: "Payslip - two-party test", docKind: "payslip", cipher, days: 180 }),
 });
 if (vault.status !== 200) { bad(`vault write failed: ${vault.data.error}`); process.exit(1); }
 ok(`vault ${vault.data.vaultId} stored for the owner`);

@@ -29,7 +29,8 @@
     "prove:asking": "node --env-file=.env scripts/asking-prove.mjs",
     "prove:integrity": "node --env-file=.env scripts/integrity-prove.mjs",
     "prove:accuracy": "node --env-file=.env scripts/accuracy-matrix.mjs",
-    "prove:questions": "node --env-file=.env scripts/question-matrix.mjs"
+    "prove:questions": "node --env-file=.env scripts/question-matrix.mjs",
+    "prove:session": "node --env-file=.env scripts/session-prove.mjs"
   },
   "dependencies": {
     "@arkiv-network/sdk": "^1.0.1",

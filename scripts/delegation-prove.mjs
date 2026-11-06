@@ -19,8 +19,9 @@
  */
 
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { sealedBody } from "./seal.mjs";
 import {
-  GrantTypes, RequestTypes, AnswerTypes, DelegationTypes,
+  GrantTypesV1 as GrantTypes, RequestTypes, AnswerTypes, DelegationTypes,
   grantMessage, requestMessage, answerMessage, delegationMessage, domain, STATEMENTS,
 } from "../src/auth/typed.mjs";
 
@@ -61,15 +62,7 @@ step(1, "Owner seals two documents and issues a permission on the first");
 
 const sealOne = async (label) => {
   const r = await api("/api/vault", {
-    body: {
-      owner: OWNER.address,
-      label,
-      docKind: "resume",
-      sha256: await sha256hex(label),
-      iv: Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64"),
-      cipher: `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(512))).toString("hex")}`,
-      days: 30,
-    },
+    body: await sealedBody(OWNER, { label, docKind: "resume", bytes: 512 }),
   });
   if (r.status !== 200) { bad(`seal failed: ${r.data.error}`); process.exit(1); }
   return r.data.vaultId;

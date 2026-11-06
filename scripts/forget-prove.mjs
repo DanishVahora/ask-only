@@ -19,6 +19,7 @@
  */
 
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { sealedBody } from "./seal.mjs";
 import { ForgetTypes, forgetMessage, domain, STATEMENTS } from "../src/auth/typed.mjs";
 
 const BASE = process.env.ASKONLY_URL || "http://localhost:5173";
@@ -53,16 +54,8 @@ step(1, "The owner seals two documents");
 
 const seal = async (label) => {
   const r = await api("/api/vault", {
-    body: {
-      owner: OWNER.address,
-      label,
-      docKind: "a letter from my employer",
-      sha256: await sha256hex(label),
-      iv: Buffer.from(crypto.getRandomValues(new Uint8Array(12))).toString("base64"),
-      // A real, non-trivial ciphertext, so "the bytes are gone" means something.
-      cipher: `0x${hex(crypto.getRandomValues(new Uint8Array(2048)))}`,
-      days: 30,
-    },
+    // A real, non-trivial ciphertext, so "the bytes are gone" means something.
+    body: await sealedBody(OWNER, { label, docKind: "a letter from my employer", bytes: 2048 }),
   });
   if (r.status !== 200) { bad(`seal failed: ${JSON.stringify(r.data)}`); process.exit(1); }
   return r.data.vaultId;
