@@ -82,8 +82,8 @@ than decorative: remove it and there is nothing to ask.
 
 ## 5. Beyond the first use case
 
-The same primitive — *a capability to ask one question about a document you will never receive,
-which expires on its own* — is not specific to income or to India:
+The same primitive — *a capability to ask about a document you will never receive, for a set
+time, after which it expires on its own* — is not specific to income or to India:
 
 - **Healthcare.** "Is this patient on anticoagulants?" without releasing the discharge summary.
 - **Age and eligibility.** "Is this person over 18?" without the ID.
@@ -118,17 +118,24 @@ Stated plainly, because these are the things that would sink it:
 
 Asked directly, because the criterion asks it directly.
 
-**Yes, and here is the specific reason rather than a promise.** India's DPDP Rule 4 — registration
+**Can they try it today? Yes, on their own machine.** Clone the repo, put the keys in `.env`, run
+`npm start` and open `http://localhost:5173`, the one origin 0G's allowlist accepts. That is also
+why there is no hosted demo: a hosted copy would have to relay through its operator, who would then
+see the lines each question reads.
+
+**Will we keep building it after Mumbai? Yes, and here is the specific reason rather than a
+promise.** India's DPDP Rule 4 — registration
 of Consent Managers — commences **13 November 2026**, six days after this deadline. Rule 4 is the
 only route to registration, so on that date a regulated category opens with **no incumbents**. The
 work between now and then is not speculative:
 
-- **Immediately after the event.** Finish the Swarm leg for durable receipts (blocked today only on
-  a postage batch), and replace the demo registry with a real ENSv2 name we control so the
-  refuse→grant→succeed loop runs entirely on canonical infrastructure.
-- **Next.** Local OCR, so a photograph of a payslip never leaves the device even to be read. The
-  only image-capable TeeML model on 0G is down right now, which is what forced v1 to text; when it
-  returns, the extract step moves on-device.
+- **Immediately after the event.** Build the Swarm leg for durable receipts, and run the ENSv2
+  role gate's demo on a real ENSv2 name we control rather than a demo registry. That gate,
+  `AskOnlyGate.sol`, is deployed on Sepolia and tested, and `scripts/ens-demo.mjs` shows it
+  refuse, grant the role, then allow the same question. The app itself does not consult it: its
+  permissions are Arkiv records.
+- **Already done.** Local OCR. pdf.js and Tesseract run in the browser, so a PDF or a photo of a
+  payslip is read on the device, and the file itself is never uploaded, not even to the enclave.
 - **The part that needs other people.** A verifier-side SDK. AskOnly is worth nothing if a landlord
   or an NBFC cannot accept a bit in place of a PDF, and that is an integration problem, not a
   cryptography problem. The honest statement is that the protocol is the easy half.

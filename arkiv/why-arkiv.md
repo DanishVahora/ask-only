@@ -108,8 +108,8 @@ expires, and re-affirming it is on the record.
 We originally planned to put the encrypted document in Swarm and keep only the capability in
 Arkiv. We moved the ciphertext into Arkiv `bytes` instead, and it made the story stronger.
 
-A `bytes` column holds 128 KiB per create, which comfortably fits a compressed encrypted
-payslip. Because it is an ordinary Arkiv entity, **the ciphertext carries its own death block**.
+A `bytes` column holds 128 KiB per create, which comfortably fits an encrypted payslip. Because
+it is an ordinary Arkiv entity, **the ciphertext carries its own death block**.
 So the data structurally expires, not merely the permission to ask about it. A storage layer
 that refuses to return the bytes is a much better answer to "is it still there?" than any
 retention policy.
@@ -140,12 +140,12 @@ names"*. So the question of what we did **not** put there is as much a design de
 
 | Kept off | Where it lives instead | Why |
 |---|---|---|
-| **The passphrase** | the owner's device, in memory, for one operation | It is the only thing between a public ciphertext and the document. It is never transmitted anywhere, including to our own server. |
-| **The document key** | derived in the browser, never persisted | PBKDF2 at 210,000 iterations from the passphrase. There is no key to store, so there is no key to leak. |
-| **The plaintext** | nowhere | It exists in the owner's tab for the duration of one answer. It is never written to disk, never logged, never sent to our server. |
-| **The whole document, even to the enclave** | only the lines bearing on the question | Measured: 4 of 12 lines. The employer, PAN, account number and address never entered the enclave at all. |
-| **Any personal data at all** | — | What is indexed on Arkiv is hashes, addresses, enums, counts and block numbers. There is no name, no figure and no identifier of a person in any entity. |
-| **The 0G API key** | the owner's browser: their own, or the one in `.env` on the machine running AskOnly, which `GET /api/zerog/key` hands only to a page on that machine | The browser calls the enclave itself, so no question and no line of the document passes through our server. A key only the server could use would force every answer through it. |
+| **The passphrase** | the owner's device, in memory, for one operation | Outside the owner's browser, it is the only thing between a public ciphertext and the document. It is never transmitted anywhere, including to our own server. |
+| **The document key** | the owner's browser: derived there, and kept in IndexedDB while a permission is live | PBKDF2 at 210,000 iterations from the passphrase. It is kept so the browser can answer after a reload without asking for the passphrase again. No script can read it out, but Chrome writes it into the profile's files, so anyone who can read those can open the document. AskOnly deletes it once the permissions it serves have all ended. |
+| **The plaintext** | the owner's tab, in memory | It stays there while a permission is live, so the tab can answer by itself. It is never written to disk, never logged, never sent to our server. |
+| **The whole document, even to the enclave, at first** | the lines bearing on the question, with identifying values sent as `[withheld]` | Each question starts with the narrowest extract. On the landing page's sample payslip, "Can they afford rent of ₹25,000 a month?" is first sent 7 of its 16 lines, none of them the employer, PAN, account number or address. "What is their PAN number?" is first sent one line, `PAN: [withheld]`. The last stage is the whole document, unmasked. It is used when the narrower ones cannot settle the question, or when there is nothing narrower to try. |
+| **Anything read from the document** | — | No line of the document, and no figure from it, is written to Arkiv in the clear: a verdict is yes, no or unknown, with a band from a fixed list. That is not the same as no personal data. Each question is stored word for word with its verdict, and so are the topic a reviewer may ask about, the reviewer's display name and the document's label. |
+| **The 0G API key** | the owner's browser: their own, or the one in `.env` on the machine running AskOnly, which `GET /api/zerog/key` hands only to a page on that machine | The browser calls the enclave itself, so no line of the document passes through our server. A key only the server could use would force every answer through it. |
 
 The ciphertext itself **is** on Arkiv, deliberately, because a `bytes` column carries a death block
 and that makes the document structurally expire rather than merely be marked deleted. That is a
@@ -161,13 +161,14 @@ We would rather state these than have a judge find them.
   queries stop returning the entity and operations on it fail. We never say "cryptographically
   erased". Our defence against historical bytes is that they are AES-GCM-256 ciphertext
   encrypted in the owner's browser with a passphrase that never left it.
-- **Everything readable on Arkiv is public.** That is why no personal data is written: only
-  hashes, addresses, enums, and block numbers.
+- **Everything readable on Arkiv is public.** That is why nothing from inside the document is
+  written there except as ciphertext. What is in the clear: each question word for word with its
+  verdict, the topic a reviewer may ask about, the reviewer's display name and the document's label.
 - **Expiry kills the capability, not knowledge.** A landlord who was told "yes" still knows
   "yes". AskOnly shrinks what is disclosed to a single bit and makes every bit accountable. It
   does not make knowledge revocable; nothing can.
 - **The retention monitor is an observation over a window**, not a proof of absence for all
-  time. We say so on the screen that shows it.
+  time. We say so in what `GET /api/retention` returns. No screen shows it.
 
 ---
 

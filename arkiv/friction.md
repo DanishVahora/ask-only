@@ -29,9 +29,9 @@ Measured here, twice, on an unfiltered subscription:
 So on our second measurement, **44 of 45 extension events belonged to strangers.**
 
 Why this is worse than an ordinary bug: AskOnly's whole thesis is that *extending* a permission
-is a public act while letting it die is silent. The retention monitor is the screen that proves
-it. Unfiltered, that screen shows nine unrelated wallets' retention as if it were the data
-subject's — which is not merely wrong output, it is a **false accusation rendered in a UI**.
+is a public act while letting it die is silent. The retention monitor is what proves it.
+Unfiltered, it would report nine unrelated wallets' retention as if it were the data subject's —
+which is not merely wrong output, it is a **false accusation**.
 
 Our fix is in [`src/arkiv/watch.mjs`](../src/arkiv/watch.mjs): filter client-side against a known
 owner/key set, count the drops, and **refuse to start unfiltered** rather than defaulting to
@@ -44,8 +44,8 @@ if (ownerSet.size === 0 && keySet.size === 0) {
 }
 ```
 
-We surface the drop count in the UI, because *44 dropped* is itself the evidence that the
-filter is load-bearing.
+We report the drop count, because *44 dropped* is itself the evidence that the filter is
+load-bearing. It is in `GET /api/retention`; no screen shows it.
 
 **Suggestion:** an `owners` / `keys` / `schema` option on `watchEntityEvents` would remove a
 whole class of silent misattribution. Failing that, one sentence in the docs saying the stream
@@ -99,7 +99,8 @@ The positional form throws `InvalidExpiryError: expiration must be built with Ex
 This is worth calling out beyond the signature itself. Our expiry test asserts "every operation
 on a dead entity fails". With the wrong argument shape the extend call *did* fail — for the
 wrong reason — and the test **passed while proving nothing**. A false proof is worse than a
-missing one. We now assert on the failure reason, not just on failure.
+missing one. The script now prints the reason beside each failure, so a pass for the wrong reason
+shows. It does not check the reason in code.
 
 ---
 
@@ -115,9 +116,11 @@ String(e?.shortMessage || e?.message || e)
   .replace(/https?:\/\/[^\s)]+/g, "<rpc-redacted>")
 ```
 
-Combined with "anyone can read any entity", this shaped the schema: **no personal data is ever
-written to Arkiv.** The document is AES-GCM-256 ciphertext encrypted in the browser; what is
-indexed is hashes, addresses, enums and block numbers.
+Combined with "anyone can read any entity", this shaped the schema: **nothing from inside the
+document is written to Arkiv except as ciphertext.** The document is AES-GCM-256 ciphertext
+encrypted in the browser, and a verdict is yes, no or unknown. That is not the same as no personal
+data: each question is stored word for word, and so are the reviewer's display name and the
+document's label.
 
 ---
 
@@ -127,12 +130,12 @@ The network has no negation at all. That is a defensible choice for an indexed s
 propagates backwards into modelling: you cannot express "permissions that have not been spent".
 
 So every lifecycle state has to be an **explicit enum you patch on transition**, never an
-absence you negate. In AskOnly `grant.state` is `live | spent | revoked`, and `spent` is written
-at the moment the last use is consumed:
+absence you negate. In AskOnly `grant.state` is `live | revoked`, plus `spent` for older grants
+that carried a question count, written at the moment the last use is consumed:
 
 ```js
 const set = { usesSpent: u64(next) };
-if (next >= BigInt(usesAllowed)) set.state = str("spent");
+if (BigInt(usesAllowed) > 0n && next >= BigInt(usesAllowed)) set.state = str("spent");
 ```
 
 Worth putting in the data-modelling docs as a first-class rule rather than a query footnote —
@@ -214,7 +217,7 @@ Recording it because it is the same *class* of bug as #1 and someone will hit it
 
 On Sepolia (not Rabdi), two `eth_call`s issued back to back right after a write were served by
 nodes at different heights. `mayAsk` returned `true` while `permittedSets` returned
-`income=false` **in the same breath** — a visibly self-contradictory UI.
+`income=false` **in the same breath** — a UI showing both would have contradicted itself.
 
 The fix generalises: **pin every group of reads that must agree to one block number**, and throw
 if two pinned reads of the same fact still disagree rather than quietly picking one.
@@ -226,7 +229,7 @@ if two pinned reads of the same fact still disagree rather than quietly picking 
 - 2-second blocks make an expiry demo actually watchable. We showed a permission queryable at
   block 283073 and gone at 283075, live, in 17 seconds of wall time.
 - `ExpirationTime.fromMinutes()` made a 90-second capability trivial to construct.
-- The 128 KiB `bytes` limit is exactly enough for a compressed encrypted payslip, which let us
+- The 128 KiB `bytes` limit is enough for an encrypted payslip, which let us
   drop a whole storage dependency and put the ciphertext in Arkiv itself — where it carries its
   own death block.
 - Error messages are, with the exceptions above, the best part of the SDK.
