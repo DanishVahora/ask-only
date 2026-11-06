@@ -52,15 +52,50 @@ export class EnclaveError extends Error {
 
 /* --------------------------------------------------------------- providers */
 
-/** Live provider list for a model. No caching: a provider going unhealthy
- *  mid-demo is exactly the situation where a stale list lies to you. */
-export async function providers(model = DEFAULT_MODEL, apiKey) {
-  const r = await fetch(`${baseUrl()}/providers?model=${encodeURIComponent(model)}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
+/* A short cache, and only for the provider LIST.
+ *
+ * 0G's router is intermittently slow - measured 11s on a bare unauthenticated
+ * request on 2026-11-06. Without a timeout, /api/providers hangs and the UI
+ * shows a bare "fetch failed" for something that is only informational. The
+ * answer path is never served from this cache; a provider going unhealthy
+ * mid-demo must still be caught, so assertTeeML revalidates on every ask. */
+let _cache = { at: 0, model: null, data: null };
+const CACHE_MS = 45_000;
+const FETCH_MS = 20_000;
+
+/** Live provider list for a model. */
+export async function providers(model = DEFAULT_MODEL, apiKey, { fresh = false } = {}) {
+  if (!fresh && _cache.data && _cache.model === model && Date.now() - _cache.at < CACHE_MS) {
+    return _cache.data;
+  }
+
+  let r;
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      r = await fetch(`${baseUrl()}/providers?model=${encodeURIComponent(model)}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(FETCH_MS),
+      });
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!r) {
+    // Serve a stale list rather than nothing, and say that is what happened.
+    if (_cache.data && _cache.model === model) {
+      const stale = _cache.data.map((p) => ({ ...p, stale: true }));
+      return stale;
+    }
+    throw new EnclaveError(
+      `0G's provider list did not answer within ${FETCH_MS / 1000}s (${lastErr?.name ?? "error"})`,
+      "providers-timeout",
+    );
+  }
   if (!r.ok) throw new EnclaveError(`GET /providers returned ${r.status}`, "providers");
   const { data = [] } = await r.json();
-  return data.map((p) => ({
+  const mapped = data.map((p) => ({
     address: p.address,
     name: p.provider_name || p.provider_identity || "unknown",
     healthy: Boolean(p.is_healthy),
@@ -72,6 +107,8 @@ export async function providers(model = DEFAULT_MODEL, apiKey) {
     modality: p.architecture?.modality ?? null,
     contextLength: p.context_length ?? null,
   }));
+  _cache = { at: Date.now(), model, data: mapped };
+  return mapped;
 }
 
 /**

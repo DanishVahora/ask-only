@@ -3,293 +3,290 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AskOnly — answer the question, never send the file</title>
-<meta name="description" content="A consent layer where the verifier never receives your document, only a signed answer to one permitted question — and the permission is destroyed by the network, not by a promise." />
-<meta property="og:title" content="AskOnly — answer the question, never send the file" />
-<meta property="og:description" content="You cannot prove you deleted data. You can prove you never held it." />
+<title>AskOnly — don't send the file, just answer</title>
+<meta name="description" content="A landlord wants to know you earn enough. He needs one bit, not your payslip. AskOnly answers the question, never sends the document, and lets the permission die on its own." />
+<meta property="og:title" content="AskOnly — don't send the file, just answer" />
+<meta property="og:description" content="You can never prove you deleted it. You can prove you never held it." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="css/theme.css" />
 <link rel="stylesheet" href="css/landing.css" />
 </head>
 <body>
 
-<svg class="sr" aria-hidden="true">
-  <defs>
-    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/></symbol>
-    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
-    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
-    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
-    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
-    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></symbol>
-  </defs>
-</svg>
+<svg class="sr" aria-hidden="true"><defs>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+</defs></svg>
 
+<!-- announcement -->
+<div class="announce">
+  <div class="shell announce__in">
+    <span>India's consent-manager rules commence <strong>13 November 2026</strong>. There are no incumbents.</span>
+    <a class="announce__link" href="#why">Why that matters <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+  </div>
+</div>
+
+<!-- floating pill nav -->
 <header class="nav">
-  <div class="shell nav__in">
-    <a class="wordmark" href="/">
-      AskOnly<span class="wordmark__dot">.</span>
+  <div class="nav__pill">
+    <a class="brand" href="/">
+      <span class="brand__mark" aria-hidden="true"></span>
+      AskOnly
     </a>
     <nav class="nav__links" aria-label="Sections">
       <a href="#how">How it works</a>
-      <a href="#limits">What we don't claim</a>
-      <a href="/ledger.html">Ledger</a>
+      <a href="#limits">What we don’t claim</a>
+      <a href="#faq">FAQ</a>
     </nav>
-    <div class="nav__act">
-      <a class="nav__quiet" href="/ask.html">I was asked for a document</a>
-      <a class="btn btn--primary btn--sm" href="/vault.html">Open my vault</a>
-    </div>
+    <a class="btn btn--primary btn--sm" href="/vault.html">
+      <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+      Open your vault
+    </a>
   </div>
 </header>
 
 <main id="main">
 
-  <!-- ─────────────────────────────── hero ─────────────────────────────── -->
+  <!-- ───────────────────────────── hero ───────────────────────────── -->
   <section class="hero">
-    <div class="shell hero__in">
-
-      <div class="hero__text rise rise-1">
-        <p class="label">Consent layer · ETHGlobal Mumbai 2026</p>
-        <h1 class="display">
-          Answer the question.<br />
-          <span class="mark-hl">Never send the file.</span>
-        </h1>
-        <p class="lede">
-          Your landlord wants to know you earn enough. He does not need your payslip,
-          your PAN, your bank account or your address — he needs one bit.
-          AskOnly gives him the bit, keeps the document, and lets the permission
-          to ask <em>die on its own</em>.
-        </p>
-        <div class="row wrap hero__act">
-          <a class="btn btn--primary" href="/vault.html">
-            <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
-            Put a document in
-          </a>
-          <a class="btn btn--ghost" href="#how">See how it works</a>
-        </div>
-        <p class="hero__foot mono">
-          Runs on your machine. Your browser holds the key and talks to the
-          enclave directly — there is no server in the answer path.
-        </p>
+    <div class="shell center">
+      <p class="eyebrow rise rise-1">AskOnly · consent layer</p>
+      <h1 class="hero__h rise rise-2">
+        Don’t send the file,<br />
+        <span class="say">just answer.</span>
+      </h1>
+      <p class="hero__sub lede rise rise-3">
+        Your landlord wants to know you earn enough. He needs one bit —
+        not your payslip, your PAN, your bank account and your address.
+      </p>
+      <div class="hero__act rise rise-4">
+        <a class="btn btn--primary btn--lg" href="/vault.html">
+          <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+          Put a document in
+        </a>
       </div>
-
-      <!-- the moment: the sheet does not move -->
-      <div class="hero__demo rise rise-2">
-        <div class="stage sheet sheet--pressed" id="stage">
-          <div class="row-between stage__head">
-            <p class="label">Live — press ask</p>
-            <span class="stamp stamp--todo" id="stageState">idle</span>
-          </div>
-
-          <div class="stage__body">
-            <!-- the document, which never moves -->
-            <figure class="doc" id="doc">
-              <figcaption class="doc__cap">
-                <svg class="ico" aria-hidden="true"><use href="#i-file"/></svg>
-                Payslip — Oct 2026
-              </figcaption>
-              <ul class="doc__lines" id="docLines">
-                <li data-keep="0">Tata Consultancy Services Ltd</li>
-                <li data-keep="0">PAN ABCDE1234F</li>
-                <li data-keep="0">HDFC 50100234567891</li>
-                <li data-keep="0">14 Hill Road, Bandra West</li>
-                <li data-keep="1">Gross 68,000</li>
-                <li data-keep="1">Net pay 62,960</li>
-              </ul>
-              <p class="doc__stay mono" id="docStay">encrypted · stays here</p>
-            </figure>
-
-            <!-- the wire -->
-            <div class="wire" aria-hidden="true">
-              <div class="wire__track"><span class="wire__dot" id="dot"></span></div>
-              <p class="wire__q mono" id="wireQ">income&nbsp;&gt;&nbsp;₹50,000&nbsp;?</p>
-            </div>
-
-            <!-- the enclave -->
-            <div class="enclave" id="enclave">
-              <p class="label">
-                <svg class="ico" aria-hidden="true"><use href="#i-chip"/></svg>
-                Enclave
-              </p>
-              <p class="enclave__meta mono">glm-5.3 · TDX / dstack</p>
-              <p class="enclave__meta mono">trust_mode private</p>
-              <div class="enclave__out" id="enclaveOut">
-                <span class="mono muted">waiting</span>
-              </div>
-            </div>
-          </div>
-
-          <hr class="perf" />
-
-          <!-- the receipt -->
-          <div class="receipt" id="receipt" hidden>
-            <div class="row-between">
-              <p class="label">Receipt</p>
-              <span class="stamp stamp--done stamp--cocked">signed by asker</span>
-            </div>
-            <dl class="kv receipt__kv">
-              <dt>Asked</dt><dd id="rQ">—</dd>
-              <dt>Answer</dt><dd id="rA">—</dd>
-              <dt>Saw</dt><dd id="rSaw">—</dd>
-              <dt>Provider</dt><dd id="rProv">—</dd>
-              <dt>Request</dt><dd id="rReq">—</dd>
-              <dt>Dies in</dt><dd id="rDies">—</dd>
-            </dl>
-          </div>
-
-          <div class="row wrap stage__act">
-            <button class="btn btn--primary btn--sm" id="askBtn">
-              Ask the permitted question
-            </button>
-            <button class="btn btn--sm" id="askBad">Ask for the exact salary</button>
-          </div>
-          <p class="stage__note mono" id="stageNote">
-            The document never leaves this card. Watch which lines the enclave is given.
-          </p>
-        </div>
-      </div>
-
+      <p class="hero__plat tiny rise rise-4">
+        Runs on your machine · your browser holds the key · nothing in the answer path but you
+      </p>
     </div>
   </section>
 
-  <!-- ───────────────────────────── the argument ───────────────────────── -->
-  <section class="band" id="why">
+  <!-- built on -->
+  <section class="builton">
     <div class="shell">
-      <div class="docket">
-        <div class="stack gap6">
-          <p class="label">The premise</p>
-          <h2>Every company promises to delete your data. None of them can prove they did.</h2>
-          <p class="lede">
-            That is not a complaint about corporate honesty — it is a theorem.
-            Broadbent and Islam proved that certified deletion is impossible using
-            classical information, because classical ciphertexts can be copied.
-            Cooper et al. showed you cannot cleanly remove a fact from a model's
-            parameters either. What industry calls <em>proof of deletion</em> is a
-            NIST form with somebody's phone number on it.
-          </p>
-          <p class="lede">
-            So deletion is the wrong thing to ask for.
-            <span class="mark-hl">You can never prove you deleted it. You can prove you never held it.</span>
-          </p>
-        </div>
+      <p class="eyebrow center">Each layer doing the one thing only it can do</p>
+      <div class="builton__row">
+        <div class="builton__item"><span class="builton__name">ENSv2</span><span class="tiny">who may ask what</span></div>
+        <div class="builton__item"><span class="builton__name">0G Private Compute</span><span class="tiny">the only reader</span></div>
+        <div class="builton__item"><span class="builton__name">Arkiv</span><span class="tiny">until when</span></div>
+      </div>
+    </div>
+  </section>
 
-        <aside class="stack gap4">
-          <div class="sheet sheet--sunken">
-            <p class="label">Receipts, ranked</p>
-            <ul class="list proof">
-              <li>
-                <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
-                <span><strong>"We deleted it."</strong> A claim by the one party it would incriminate.</span>
-              </li>
-              <li>
-                <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
-                <span><strong>A signed deletion receipt.</strong> Proves a key holder signed a claim. Not that the data is gone.</span>
-              </li>
-              <li>
-                <svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>
-                <span><strong>Structural absence.</strong> The storage layer refuses the query, and the only route to the plaintext was a capability that no longer exists.</span>
-              </li>
+  <!-- ─────────────────── the live moment ─────────────────── -->
+  <section class="band band--tight" id="demo">
+    <div class="shell">
+      <div class="center stage__intro">
+        <h2 class="d3">Watch the document <span class="say">stay put.</span></h2>
+        <p class="body center" style="margin-inline:auto">
+          One question crosses to a sealed enclave. One bit comes back.
+          The sheet never moves.
+        </p>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="stage__grid">
+          <!-- the document -->
+          <figure class="doc" id="doc">
+            <figcaption class="doc__cap">
+              <span class="tag" id="docTag">encrypted · stays here</span>
+            </figcaption>
+            <ul class="doc__lines" id="docLines">
+              <li data-keep="0">Tata Consultancy Services Ltd</li>
+              <li data-keep="0">PAN ABCDE1234F</li>
+              <li data-keep="0">HDFC 50100234567891</li>
+              <li data-keep="0">14 Hill Road, Bandra West</li>
+              <li data-keep="1">Gross 68,000</li>
+              <li data-keep="1">Net pay 62,960</li>
             </ul>
+          </figure>
+
+          <!-- the wire -->
+          <div class="wire" aria-hidden="true">
+            <p class="wire__q mono" id="wireQ">income&nbsp;&gt;&nbsp;₹50,000&nbsp;?</p>
+            <div class="wire__track"><span class="wire__dot" id="dot"></span></div>
           </div>
-          <p class="annot">
-            AskOnly issues no deletion receipts. It never had to — the verifier was
-            never given anything to delete.
-          </p>
-        </aside>
+
+          <!-- the enclave -->
+          <div class="enclave" id="enclave">
+            <p class="enclave__cap mono">Intel TDX enclave</p>
+            <div class="enclave__out" id="enclaveOut"><span class="mono enclave__idle">waiting</span></div>
+            <p class="enclave__meta mono">glm-5.3 · trust_mode private</p>
+          </div>
+        </div>
+
+        <div class="stage__foot">
+          <p class="small" id="stageNote">The document never leaves this card.</p>
+          <div class="row g3 wrap">
+            <button class="btn btn--sm" id="askBad">Ask for the exact salary</button>
+            <button class="btn btn--primary btn--sm" id="askBtn">Ask the permitted question</button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ────────────────────────────── how it works ──────────────────────── -->
-  <section class="band band--alt" id="how">
+  <!-- ─────────────────── the number ─────────────────── -->
+  <section class="band band--dark" id="why">
+    <div class="shell center narrow">
+      <p class="eyebrow">What the enclave actually saw</p>
+      <p class="bignum"><span class="mono" id="bigNum">4</span> of 12 lines</p>
+      <p class="lede" style="margin-inline:auto">
+        Your employer, your PAN, your account number and your address never entered it.
+        Not withheld from the landlord — <span class="say">withheld from the model.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────── the premise ─────────────────── -->
+  <section class="band">
+    <div class="shell narrow center">
+      <h2>Every company promises to delete your data.<br /><span class="say">None of them can prove they did.</span></h2>
+      <p class="body center" style="margin-inline:auto; margin-top: var(--s6)">
+        That is a theorem, not a complaint. Broadbent and Islam proved certified deletion is
+        impossible using classical information, because classical ciphertexts can be copied.
+        What the industry calls <em>proof of deletion</em> is a form with somebody’s phone
+        number on it.
+      </p>
+      <p class="lede quote">
+        You can never prove you deleted it.<br />
+        <span class="say">You can prove you never held it.</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- ─────────────────── how it works ─────────────────── -->
+  <section class="band band--tight" id="how">
     <div class="shell">
-      <p class="label">How it works</p>
-      <h2 class="how__h">Three systems, each doing the one thing only it can do.</h2>
+      <div class="center" style="margin-bottom: var(--s10)">
+        <p class="eyebrow">How it works</p>
+        <h2 class="d3" style="margin-top: var(--s3)">Three steps, and none of them <span class="say">move your document.</span></h2>
+      </div>
 
-      <ol class="layers">
-        <li class="sheet layer" style="--accent: var(--ens)">
-          <p class="label layer__who">ENSv2 — who may ask what</p>
-          <div class="layer__main"><p class="layer__body">
-            The question-set a verifier may ask <em>is</em> a role on an ENS name.
-            Not a row in our database, not a checkbox — an on-chain role bitmap.
-            Revoking a permission is revoking a role.
-          </p><p class="layer__note">A refused question never reaches your document.</p></div>
-          <p class="layer__code mono">hasRoles(labelId, 1&lt;&lt;40, landlord) → false</p>
+      <ol class="steps">
+        <li class="step">
+          <p class="step__n mono">01</p>
+          <h3 class="h3">Seal it</h3>
+          <p class="small">
+            The document encrypts in your browser with a passphrase that never leaves the page.
+            What gets stored is ciphertext carrying its own expiry.
+          </p>
         </li>
-
-        <li class="sheet layer" style="--accent: var(--zerog)">
-          <p class="label layer__who">0G Private Computer — the only reader</p>
-          <div class="layer__main"><p class="layer__body">
-            A model inside an Intel TDX enclave reads a <em>minimal extract</em> and
-            returns one bit. India's real documents are unsigned, unstructured scans;
-            there is no ZK circuit for a photograph of a payslip. The enclave is the
-            only universal adapter from real paper to a purpose-limited answer.
-          </p><p class="layer__note">Your employer, PAN and account number never enter it.</p></div>
-          <p class="layer__code mono">5 of 16 lines sent · 0 figures returned</p>
+        <li class="step">
+          <p class="step__n mono">02</p>
+          <h3 class="h3">Hand out a question</h3>
+          <p class="small">
+            Not a copy — a capability. One question set, a few uses, an expiry.
+            Who may ask what is an on-chain role, so revoking is revoking a role.
+          </p>
         </li>
-
-        <li class="sheet layer" style="--accent: var(--arkiv)">
-          <p class="label layer__who">Arkiv — until when</p>
-          <div class="layer__main"><p class="layer__body">
-            The permission is an entity whose expiry the network enforces. Past its
-            death block, queries do not return it and every operation on it fails.
-            And because Arkiv emits an event when a record is <em>extended</em> but
-            nothing when one dies, keeping a permission alive is a public signed act
-            while letting it die is silent.
-          </p><p class="layer__note">Retention becomes the thing you have to explain.</p></div>
-          <p class="layer__code mono">block 283073 queryable → 283075 gone</p>
+        <li class="step">
+          <p class="step__n mono">03</p>
+          <h3 class="h3">Let it die</h3>
+          <p class="small">
+            Past its death block the network stops returning it and every operation fails.
+            There is nothing to delete, and nobody to trust to do it.
+          </p>
         </li>
       </ol>
     </div>
   </section>
 
-  <!-- ─────────────────────────────── limits ───────────────────────────── -->
-  <section class="band" id="limits">
-    <div class="shell">
-      <div class="docket">
-        <div class="stack gap5">
-          <p class="label">What we don't claim</p>
-          <h2>The boundary, before you find it.</h2>
-          <p class="lede">
-            A privacy project that overstates is worse than one that does less.
-            Here is every place AskOnly stops.
-          </p>
-          <ul class="list limits">
-            <li><span class="stamp stamp--block">no</span><span><strong>We do not erase bytes from history.</strong> Arkiv's docs do not claim it, so neither do we. Expiry means queries stop returning it and operations fail.</span></li>
-            <li><span class="stamp stamp--block">no</span><span><strong>The enclave does not enforce our policy.</strong> 0G is an inference router, not a place to deploy code. Enforcement lives at the client and the verifier, and we say so.</span></li>
-            <li><span class="stamp stamp--block">no</span><span><strong>0G does not sign the answer.</strong> The Router exposes no signature endpoint — we probed eight path shapes with a live request id, all 404. So a receipt is bound by provider <em>address</em>, never by a signature we did not get.</span></li>
-            <li><span class="stamp stamp--block">no</span><span><strong>Expiry kills the capability, not knowledge.</strong> A landlord told "yes" still knows "yes". We shrink what is disclosed to one bit and make every bit accountable. Nothing makes knowledge revocable.</span></li>
-            <li><span class="stamp stamp--block">no</span><span><strong>The TEE boundary is real but not absolute.</strong> You are trusting Intel TDX, the dstack image and 0G's gateway. TEE.fail happened in October 2025.</span></li>
-          </ul>
+  <!-- ─────────────────── retention ─────────────────── -->
+  <section class="band band--dark">
+    <div class="shell narrow center">
+      <h2 class="d3">Keeping a permission alive <span class="say">leaves a mark.</span><br />Letting it die does not.</h2>
+      <p class="body center" style="margin-inline:auto; margin-top: var(--s6)">
+        Arkiv emits a public event when a record is extended, and nothing at all when one
+        expires. So retention is a signed, timestamped act — and silence means the permission
+        was allowed to lapse. The burden of proof inverts.
+      </p>
+      <div class="twoup">
+        <div class="twoup__half">
+          <p class="eyebrow">Let it expire</p>
+          <p class="twoup__big mono">0 events</p>
+          <p class="tiny">silent, free, the default</p>
         </div>
+        <div class="twoup__half">
+          <p class="eyebrow">Keep it alive</p>
+          <p class="twoup__big mono">1 signed tx</p>
+          <p class="tiny">public, timestamped, yours to explain</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-        <aside class="stack gap4">
-          <div class="sheet sheet--pressed">
-            <p class="label">What we do claim</p>
-            <p class="claim">
-              The verifier never receives the document. The enclave receives only the
-              lines bearing on the permitted question. The question that was asked and
-              the answer given are both recorded, bound to the asker's own signature.
-              And the permission expires whether anyone is watching or not.
-            </p>
-          </div>
-          <p class="annot">
-            India's DPDP Rules require a consent manager that <em>cannot read</em> what
-            it brokers, and a record of every sharing event. They require no integrity
-            guarantee on that record at all. That gap is the whole opportunity.
-          </p>
-        </aside>
+  <!-- ─────────────────── limits ─────────────────── -->
+  <section class="band" id="limits">
+    <div class="shell narrow">
+      <div class="center">
+        <p class="eyebrow">What we don’t claim</p>
+        <h2 class="d3" style="margin-top: var(--s3)">The boundary, <span class="say">before you find it.</span></h2>
+      </div>
+      <ul class="limits">
+        <li><span class="limits__no" aria-hidden="true"><svg class="ico"><use href="#i-x"/></svg></span>
+          <span><strong>We do not erase bytes from history.</strong> Expiry means queries stop returning the record and operations fail. The document is ciphertext encrypted in your browser — that is what protects the bytes.</span></li>
+        <li><span class="limits__no" aria-hidden="true"><svg class="ico"><use href="#i-x"/></svg></span>
+          <span><strong>The enclave does not enforce our policy.</strong> 0G is an inference router, not a place to deploy code. Enforcement lives at the client and the verifier, and we say so.</span></li>
+        <li><span class="limits__no" aria-hidden="true"><svg class="ico"><use href="#i-x"/></svg></span>
+          <span><strong>0G does not sign the answer.</strong> Its router exposes no signature endpoint — we probed eight paths with a live request id, all 404. So a receipt is bound by provider address, never by a signature we never got.</span></li>
+        <li><span class="limits__no" aria-hidden="true"><svg class="ico"><use href="#i-x"/></svg></span>
+          <span><strong>Expiry kills the capability, not knowledge.</strong> A landlord told “yes” still knows “yes”. We shrink what is disclosed to one bit. Nothing makes knowledge revocable.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ─────────────────── faq ─────────────────── -->
+  <section class="band band--tight" id="faq">
+    <div class="shell narrow">
+      <h2 class="d3 center" style="margin-bottom: var(--s9)">Good <span class="say">questions.</span></h2>
+
+      <details class="qa"><summary>Isn’t this just ZK selective disclosure?</summary>
+        <p class="small">ZK needs an issuer to sign structured data. India's real documents are unsigned, unstructured scans — payslips, bank statements, rent agreements. There is no circuit for a photograph of a payslip and no issuer signature to build one over. A model inside an enclave is the first universal adapter from real paper to one bit.</p></details>
+
+      <details class="qa"><summary>What stops you faking a receipt?</summary>
+        <p class="small">At the router level, nothing — and we say so on this page. What we do prove is narrower and real: the enclave address that answered, checked live against the attested provider list, and the verifier's own signature, which they produce <em>before</em> they are shown the answer. We cannot prove the enclave said it. We can prove the landlord asked and was told.</p></details>
+
+      <details class="qa"><summary>Does your server see my document?</summary>
+        <p class="small">Not when you run it yourself. Your browser decrypts locally and calls the enclave directly with your own key, so the server is not in the answer path at all. A hosted copy has to relay, which makes whoever runs it a trusted party — so the hosted build says exactly that in a permanent banner.</p></details>
+
+      <details class="qa"><summary>What happens when a permission expires?</summary>
+        <p class="small">The network stops returning it. Not a flag, not a tombstone — the query comes back empty and every operation on the record fails. We measured it: queryable at block 283073, gone at 283075.</p></details>
+
+      <details class="qa"><summary>Can I use this today?</summary>
+        <p class="small">It is a working prototype built for ETHGlobal Mumbai 2026, running on live testnets. The code is MIT. We are not a registered consent manager and cannot be — that requires ₹2 crore of net worth — so think of this as the reference implementation a registrant would run.</p></details>
+    </div>
+  </section>
+
+  <!-- ─────────────────── close ─────────────────── -->
+  <section class="band close">
+    <div class="shell center narrow">
+      <h2>He never had the document.<br /><span class="say">There is nothing to delete.</span></h2>
+      <div class="hero__act" style="margin-top: var(--s8)">
+        <a class="btn btn--primary btn--lg" href="/vault.html">
+          <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
+          Put a document in
+        </a>
       </div>
     </div>
   </section>
 
   <footer class="foot">
-    <div class="shell row-between wrap">
-      <p class="mono foot__line">
-        AskOnly — ETHGlobal Mumbai 2026 · MIT · built from scratch
-      </p>
-      <p class="mono foot__line muted" id="footChain">reading chain…</p>
+    <div class="shell foot__in">
+      <span class="tiny">AskOnly — ETHGlobal Mumbai 2026 · MIT</span>
+      <span class="tiny mono" id="footChain">reading chain…</span>
     </div>
   </footer>
 </main>

@@ -83,13 +83,19 @@ export function describeRemaining(diesAtMs) {
   const blocks = Math.max(0, Math.round(ms / BLOCK_MS));
   const mins = Math.floor(ms / 60000);
   const secs = Math.floor((ms % 60000) / 1000);
+  // Days once it is past a day - "167h 25m" is technically true and useless.
+  const hrs = Math.floor(mins / 60);
   const text =
-    mins >= 60
-      ? `${Math.floor(mins / 60)}h ${mins % 60}m`
-      : mins >= 1
-        ? `${mins}m ${String(secs).padStart(2, "0")}s`
-        : `${secs}s`;
-  return { dead: false, blocks, text, ms };
+    hrs >= 24
+      ? `${Math.floor(hrs / 24)}d ${hrs % 24}h`
+      : hrs >= 1
+        ? `${hrs}h ${mins % 60}m`
+        : mins >= 1
+          ? `${mins}m ${String(secs).padStart(2, "0")}s`
+          : `${secs}s`;
+  // Blocks are the honest unit, but six figures of them is noise. Past a day
+  // we lead with the human duration and keep blocks for the short end.
+  return { dead: false, blocks, text, ms, showBlocks: blocks < 100_000 };
 }
 
 /** One shared ticker so twenty countdowns do not mean twenty timers. */

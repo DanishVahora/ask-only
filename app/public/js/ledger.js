@@ -21,7 +21,7 @@ async function loadLedger() {
     const { accesses, refusals } = await api("/api/accesses");
 
     $("#nAnswered").textContent = String(accesses.length);
-    $("#nAnswered").className = `stamp stamp--${accesses.length ? "done" : "todo"}`;
+    $("#nAnswered").className = `tag tag--${accesses.length ? "on" : ""}`;
     $("#answered").innerHTML = accesses.length
       ? accesses
           .map(
@@ -37,14 +37,14 @@ async function loadLedger() {
           </p>
           <p class="entry__meta">q ${short(a.questionHash, 10, 6)} · a ${short(a.answerHash, 10, 6)}</p>
         </div>
-        <span class="stamp stamp--${a.answer === "yes" ? "done" : a.answer === "no" ? "block" : "todo"}">${a.answer}${a.band ? ` · ${a.band}` : ""}</span>
+        <span class="tag tag--${a.answer === "yes" ? "on" : a.answer === "no" ? "stop" : ""}">${a.answer}${a.band ? ` · ${a.band}` : ""}</span>
       </article>`,
           )
           .join("")
       : `<p class="empty">Nothing yet.</p>`;
 
     $("#nRefused").textContent = String(refusals.length);
-    $("#nRefused").className = `stamp stamp--${refusals.length ? "block" : "todo"}`;
+    $("#nRefused").className = `tag tag--${refusals.length ? "stop" : ""}`;
     $("#refused").innerHTML = refusals.length
       ? refusals
           .map(
@@ -55,7 +55,7 @@ async function loadLedger() {
           <p class="entry__q">${short(r.asker, 8, 4)} tried to ask “${r.question}”</p>
           <p class="entry__meta">${r.detail || ""}</p>
         </div>
-        <span class="stamp stamp--block">${r.reason}</span>
+        <span class="tag tag--stop">${r.reason}</span>
       </article>`,
           )
           .join("")
@@ -69,7 +69,7 @@ async function loadRetention() {
   try {
     const r = await api("/api/retention");
     $("#watchStamp").textContent = r.watching ? "watching" : "not watching";
-    $("#watchStamp").className = `stamp stamp--${r.watching ? "run" : "block"}`;
+    $("#watchStamp").className = `tag tag--${r.watching ? "warn" : "stop"}`;
     $("#wSeen").textContent = `${r.seen} chain-wide`;
     $("#wKept").textContent = `${r.kept}`;
     $("#wDropped").textContent = `${r.dropped} strangers'`;
@@ -85,7 +85,7 @@ async function loadRetention() {
           <p class="entry__meta">entity ${short(e.entityKey, 10, 8)} · new death block ${e.newExpiryBlock}</p>
           <p class="entry__meta">tx ${short(e.txHash, 10, 8)}</p>
         </div>
-        <span class="stamp stamp--run">extended</span>
+        <span class="tag tag--warn">extended</span>
       </article>`,
           )
           .join("")

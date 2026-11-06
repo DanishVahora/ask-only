@@ -8,7 +8,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="css/theme.css" />
 <link rel="stylesheet" href="css/app.css" />
-<link rel="stylesheet" href="css/landing.css" />
+
 </head>
 <body>
 
@@ -21,16 +21,14 @@
 <div id="modeBanner" class="modebar"></div>
 
 <header class="nav">
-  <div class="shell nav__in">
-    <a class="wordmark" href="/">AskOnly<span class="wordmark__dot">.</span></a>
+  <div class="nav__pill">
+    <a class="brand" href="/"><span class="brand__mark" aria-hidden="true"></span>AskOnly</a>
     <nav class="nav__links" aria-label="Sections">
       <a href="/vault.html">Vault</a>
       <a href="/ledger.html">Ledger</a>
       <a href="/#how">How it works</a>
     </nav>
-    <div class="nav__act">
-      <a class="nav__quiet" href="/ask.html">Verifier view</a>
-    </div>
+    <div class="nav__act"><a class="nav__quiet" href="/ask.html">Verifier view</a></div>
   </div>
 </header>
 
@@ -38,9 +36,9 @@
   <div class="shell">
 
     <div class="app__head mt4">
-      <p class="label">Your vault</p>
+      <p class="eyebrow">Your vault</p>
       <h1>Put the document in once. Hand out questions, not copies.</h1>
-      <p class="app__sub">
+      <p class="body">
         The document is encrypted in this page with a passphrase that never leaves it.
         What goes to Arkiv is ciphertext with a death block on it — so the document
         structurally expires, not just the permission to ask about it.
@@ -51,20 +49,20 @@
 
       <!-- ─────────────────────── add a document ─────────────────────── -->
       <section class="panel">
-        <div class="sheet sheet--pressed">
+        <div class="card">
           <div class="panel__head">
             <h2>1 — Seal a document</h2>
-            <span class="stamp stamp--todo" id="sealState">not sealed</span>
+            <span class="tag" id="sealState">not sealed</span>
           </div>
 
           <div class="stack gap4 mt4">
             <div class="split">
               <label class="field">
-                <span class="label">What is it</span>
+                <span class="eyebrow">What is it</span>
                 <input class="input" id="docLabel" value="Payslip — Oct 2026" />
               </label>
               <label class="field">
-                <span class="label">Kind</span>
+                <span class="eyebrow">Kind</span>
                 <select class="select" id="docKind">
                   <option value="payslip">Payslip</option>
                   <option value="bank">Bank statement</option>
@@ -76,7 +74,7 @@
             </div>
 
             <label class="field">
-              <span class="label">The document</span>
+              <span class="eyebrow">The document</span>
               <textarea class="textarea" id="docText" spellcheck="false">Tata Consultancy Services Limited
 Employee: Danish Vahora
 Employee ID: TCS-442913
@@ -93,7 +91,7 @@ Gross: 68,000
 Provident Fund: 5,040
 Professional Tax: 200
 Net Pay: 62,960</textarea>
-              <span class="hint">
+              <span class="tiny">
                 Paste real text. Nothing here is uploaded — the next step encrypts it
                 in this page before anything is sent.
               </span>
@@ -101,14 +99,14 @@ Net Pay: 62,960</textarea>
 
             <div class="split">
               <label class="field">
-                <span class="label">Passphrase</span>
+                <span class="eyebrow">Passphrase</span>
                 <input class="input input--mono" id="pass" type="password" value="mumbai-2026" />
-                <span class="hint">Never sent. Without it the ciphertext is just bytes.</span>
+                <span class="tiny">Never sent. Without it the ciphertext is just bytes.</span>
               </label>
               <label class="field">
-                <span class="label">Keep for (days)</span>
+                <span class="eyebrow">Keep for (days)</span>
                 <input class="input input--mono" id="docDays" type="number" min="1" max="182" value="180" />
-                <span class="hint">Arkiv caps everything at 182 days. Nothing lives longer without a signed renewal.</span>
+                <span class="tiny">Arkiv caps everything at 182 days. Nothing lives longer without a signed renewal.</span>
               </label>
             </div>
 
@@ -117,54 +115,54 @@ Net Pay: 62,960</textarea>
                 <svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>
                 Encrypt here, then store
               </button>
-              <span class="hint mono" id="sealOut"></span>
+              <span class="tiny mono" id="sealOut"></span>
             </div>
           </div>
         </div>
 
         <!-- ─────────────────────── issue a grant ─────────────────────── -->
-        <div class="sheet sheet--pressed">
+        <div class="card">
           <div class="panel__head">
             <h2>2 — Let someone ask one question</h2>
-            <span class="stamp stamp--todo" id="grantState">no grant</span>
+            <span class="tag" id="grantState">no grant</span>
           </div>
 
           <div class="stack gap4 mt4">
             <label class="field">
-              <span class="label">Which document</span>
+              <span class="eyebrow">Which document</span>
               <select class="select" id="grantVault"><option value="">— seal one first —</option></select>
             </label>
 
             <div class="split">
               <label class="field">
-                <span class="label">Who may ask</span>
+                <span class="eyebrow">Who may ask</span>
                 <input class="input input--mono" id="verifier" value="0x000000000000000000000000000000000000bEEF" />
               </label>
               <label class="field">
-                <span class="label">Their ENS name</span>
+                <span class="eyebrow">Their ENS name</span>
                 <input class="input input--mono" id="verifierName" value="landlord.eth" />
               </label>
             </div>
 
             <div class="split">
               <label class="field">
-                <span class="label">Question set</span>
+                <span class="eyebrow">Question set</span>
                 <select class="select" id="questionSet"></select>
-                <span class="hint" id="setHint"></span>
+                <span class="tiny" id="setHint"></span>
               </label>
               <label class="field">
-                <span class="label" id="paramLabel">Threshold</span>
+                <span class="eyebrow" id="paramLabel">Threshold</span>
                 <input class="input input--mono" id="param" value="50000" />
               </label>
             </div>
 
             <div class="split">
               <label class="field">
-                <span class="label">How many times</span>
+                <span class="eyebrow">How many times</span>
                 <input class="input input--mono" id="uses" type="number" min="1" max="20" value="3" />
               </label>
               <label class="field">
-                <span class="label">Dies in</span>
+                <span class="eyebrow">Dies in</span>
                 <select class="select" id="life">
                   <option value="m:2">2 minutes — for the demo</option>
                   <option value="m:10">10 minutes</option>
@@ -176,14 +174,14 @@ Net Pay: 62,960</textarea>
             </div>
 
             <div class="code-line" id="questionPreview">Is monthly income above INR 50000?</div>
-            <p class="hint">
+            <p class="tiny">
               This is the only thing they will ever be able to ask. It is recorded
               verbatim, and its hash goes into every receipt.
             </p>
 
             <div class="row wrap gap3">
               <button class="btn btn--primary" id="grantBtn">Issue the capability</button>
-              <span class="hint mono" id="grantOut"></span>
+              <span class="tiny mono" id="grantOut"></span>
             </div>
           </div>
         </div>
@@ -191,12 +189,12 @@ Net Pay: 62,960</textarea>
 
       <!-- ─────────────────────── live grants ─────────────────────── -->
       <aside class="panel">
-        <div class="sheet">
+        <div class="card">
           <div class="panel__head">
             <h2>Live permissions</h2>
-            <button class="btn btn--ghost btn--sm" id="refresh">Refresh</button>
+            <button class="btn btn--sm" id="refresh">Refresh</button>
           </div>
-          <p class="hint mt4">
+          <p class="tiny mt4">
             Counting down in blocks, because that is the unit the network enforces in.
             When one dies it stops being returned by any query — there is nothing to delete.
           </p>
@@ -205,8 +203,8 @@ Net Pay: 62,960</textarea>
           </div>
         </div>
 
-        <div class="sheet sheet--sunken">
-          <p class="label">What the operator can see</p>
+        <div class="card card--inset">
+          <p class="eyebrow">What the operator can see</p>
           <dl class="kv mt4">
             <dt>Your passphrase</dt><dd>never leaves this page</dd>
             <dt>The document</dt><dd>never leaves this page unencrypted</dd>

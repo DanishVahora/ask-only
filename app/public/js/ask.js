@@ -27,7 +27,7 @@ let PENDING = null; // the answer, held back until signed
 
 const setStamp = (el, text, kind) => {
   el.textContent = text;
-  el.className = `stamp stamp--${kind}`;
+  el.className = `tag tag--${kind}`;
 };
 
 MODE = await renderModeBanner();
@@ -67,14 +67,14 @@ function updateAskable() {
 
 async function loadGrant() {
   if (!grantId) {
-    setStamp($("#grantStamp"), "no grant", "block");
+    setStamp($("#grantStamp"), "no grant", "stop");
     $("#headline").textContent = "No capability in this link.";
     $("#question").textContent = "Ask whoever sent you here for a grant link.";
     return;
   }
   try {
     GRANT = await api(`/api/grant?id=${encodeURIComponent(grantId)}`);
-    setStamp($("#grantStamp"), GRANT.state, GRANT.state === "live" ? "run" : "block");
+    setStamp($("#grantStamp"), GRANT.state, GRANT.state === "live" ? "warn" : "stop");
     $("#kGrant").textContent = GRANT.grantId;
     $("#kWho").textContent = `${GRANT.verifierName || ""} ${short(GRANT.verifier, 8, 6)}`.trim();
     $("#kSet").textContent = GRANT.questionSet;
@@ -84,7 +84,7 @@ async function loadGrant() {
   } catch (e) {
     if (e.status === 404) {
       // This is the whole thesis, and it arrives as an ordinary 404.
-      setStamp($("#grantStamp"), "expired", "block");
+      setStamp($("#grantStamp"), "expired", "stop");
       $("#headline").textContent = "This permission no longer exists.";
       $("#kDies").textContent = "expired";
       $("#question").textContent =
@@ -102,7 +102,11 @@ async function loadGrant() {
 function startClock() {
   const tick = () => {
     const r = describeRemaining(GRANT.diesAt);
-    $("#kDies").textContent = r.dead ? "expired" : `${r.blocks} blocks · ${r.text}`;
+    $("#kDies").textContent = r.dead
+      ? "expired"
+      : r.showBlocks
+        ? `${r.blocks} blocks · ${r.text}`
+        : r.text;
     const pct = r.dead ? 0 : Math.max(0, Math.min(100, (r.ms / (10 * 60 * 1000)) * 100));
     $("#lifeBar").style.width = `${pct}%`;
     if (r.dead) {
@@ -136,20 +140,20 @@ async function loadProviders() {
     const p = await api("/api/providers");
     if (!p.configured) {
       $("#providers").innerHTML = `<p class="hint">No 0G key configured on this instance.</p>`;
-      setStamp($("#teeStamp"), "no key", "block");
+      setStamp($("#teeStamp"), "no key", "stop");
       return;
     }
-    setStamp($("#teeStamp"), `${p.teeml} teeml`, p.teeml ? "done" : "block");
+    setStamp($("#teeStamp"), `${p.teeml} teeml`, p.teeml ? "on" : "stop");
     $("#providers").innerHTML = p.providers
       .map((x) => {
         const tee = x.verifiability === "TeeML";
         return `<div class="provider-row">
-          <span class="stamp stamp--${tee ? "done" : "block"}">${tee ? "teeml" : "no tee"}</span>
+          <span class="tag tag--${tee ? "on" : "stop"}">${tee ? "teeml" : "no tee"}</span>
           <span class="grow">
             <strong style="font-weight:500">${x.name}</strong>
             <span class="mono muted" style="display:block">${short(x.address, 10, 6)}${tee ? ` · ${x.teeType}/${x.teeVerifier}` : ""}</span>
           </span>
-          ${x.address.toLowerCase() === p.pinned.toLowerCase() ? '<span class="stamp stamp--info">pinned</span>' : ""}
+          ${x.address.toLowerCase() === p.pinned.toLowerCase() ? '<span class="tag">pinned</span>' : ""}
         </div>`;
       })
       .join("");
@@ -164,7 +168,7 @@ $("#askBad").addEventListener("click", async () => {
   const question = "What is their exact salary?";
   $("#answerCard").hidden = false;
   $("#waiting").hidden = true;
-  setStamp($("#answerStamp"), "refused", "block");
+  setStamp($("#answerStamp"), "refused", "stop");
   const s = document.createElement("span");
   s.className = "landed landed--no";
   s.textContent = "REFUSED";
@@ -210,14 +214,14 @@ $("#askBtn").addEventListener("click", async () => {
   $("#answerCard").hidden = false;
   $("#verdictBody").innerHTML = "";
   $("#waiting").hidden = false;
-  setStamp($("#answerStamp"), "authorising", "info");
+  setStamp($("#answerStamp"), "authorising", "");
   $("#waitingText").textContent = "checking your ENS role…";
 
   try {
     const permitted = await checkPermission();
     if (permitted === false) {
       $("#waiting").hidden = true;
-      setStamp($("#answerStamp"), "no ens role", "block");
+      setStamp($("#answerStamp"), "no ens role", "stop");
       const s = document.createElement("span");
       s.className = "landed landed--no";
       s.textContent = "REFUSED";
@@ -258,7 +262,7 @@ $("#askBtn").addEventListener("click", async () => {
       body: { questionSet: GRANT.questionSet, param: GRANT.threshold, plaintext },
     });
 
-    setStamp($("#answerStamp"), "in the enclave", "run");
+    setStamp($("#answerStamp"), "in the enclave", "warn");
     $("#waitingText").textContent = `in the enclave — ${prep.minimisation.keptLines} of ${prep.minimisation.totalLines} lines sent`;
 
     let result;
@@ -281,7 +285,7 @@ $("#askBtn").addEventListener("click", async () => {
     PENDING = { ...result, question: prep.question, questionHash: prep.questionHash, minimisation: prep.minimisation };
 
     // The answer exists but is NOT rendered yet.
-    setStamp($("#answerStamp"), "sign to see it", "run");
+    setStamp($("#answerStamp"), "sign to see it", "warn");
     const gate = document.createElement("div");
     gate.className = "stack gap4";
     gate.innerHTML = `
@@ -297,7 +301,7 @@ $("#askBtn").addEventListener("click", async () => {
     $("#signBtn").addEventListener("click", reveal);
   } catch (e) {
     $("#waiting").hidden = true;
-    setStamp($("#answerStamp"), "failed", "block");
+    setStamp($("#answerStamp"), "failed", "stop");
     $("#verdictBody").innerHTML = `<p class="hint">${e.message}</p>`;
     toast(e.message, "bad");
     btn.disabled = false;
@@ -366,7 +370,7 @@ async function reveal() {
       p.textContent = [PENDING.band, PENDING.why].filter(Boolean).join(" — ");
       $("#verdictBody").appendChild(p);
     }
-    setStamp($("#answerStamp"), "answered", "done");
+    setStamp($("#answerStamp"), "answered", "on");
 
     $("#rQuestion").textContent = PENDING.question;
     $("#rQHash").textContent = short(PENDING.questionHash, 12, 8);

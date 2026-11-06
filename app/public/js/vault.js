@@ -17,7 +17,7 @@ let OWNER = null;
 
 const setStamp = (el, text, kind) => {
   el.textContent = text;
-  el.className = `stamp stamp--${kind}`;
+  el.className = `tag tag--${kind}`;
 };
 
 /* ------------------------------------------------------------------ boot */
@@ -79,7 +79,7 @@ $("#sealBtn").addEventListener("click", async () => {
   if (pass.length < 6) return toast("use a passphrase of at least 6 characters", "bad");
 
   btn.disabled = true;
-  setStamp($("#sealState"), "encrypting", "run");
+  setStamp($("#sealState"), "encrypting", "warn");
   out.textContent = "deriving key…";
 
   try {
@@ -87,7 +87,7 @@ $("#sealBtn").addEventListener("click", async () => {
     const e = await encryptDocument(text, pass);
     out.textContent = `${e.bytesLen} bytes of ciphertext · sha256 ${short(e.sha256, 8, 6)}`;
 
-    setStamp($("#sealState"), "storing", "run");
+    setStamp($("#sealState"), "storing", "warn");
     const res = await api("/api/vault", {
       method: "POST",
       body: {
@@ -102,14 +102,14 @@ $("#sealBtn").addEventListener("click", async () => {
     });
 
     sealed = { ...res, label: $("#docLabel").value };
-    setStamp($("#sealState"), "sealed", "done");
+    setStamp($("#sealState"), "sealed", "on");
     stampIn($("#sealState"));
     out.innerHTML = `stored as <strong>${res.vaultId}</strong> · dies at block ${res.expiresAt}`;
     toast(`Sealed. ${res.bytesLen} bytes stored, unreadable without your passphrase.`, "good");
     await loadVaults();
     $("#grantVault").value = res.vaultId;
   } catch (err) {
-    setStamp($("#sealState"), "failed", "block");
+    setStamp($("#sealState"), "failed", "stop");
     out.textContent = err.message;
     toast(err.message, "bad");
   } finally {
@@ -138,7 +138,7 @@ $("#grantBtn").addEventListener("click", async () => {
 
   const [unit, n] = $("#life").value.split(":");
   btn.disabled = true;
-  setStamp($("#grantState"), "issuing", "run");
+  setStamp($("#grantState"), "issuing", "warn");
 
   try {
     const res = await api("/api/grant", {
@@ -156,7 +156,7 @@ $("#grantBtn").addEventListener("click", async () => {
         note: $("#questionPreview").textContent,
       },
     });
-    setStamp($("#grantState"), "issued", "done");
+    setStamp($("#grantState"), "issued", "on");
     stampIn($("#grantState"));
     const link = `${location.origin}/ask.html?grant=${res.grantId}`;
     $("#grantOut").innerHTML = `<a href="${link}">${res.grantId}</a> · dies at block ${res.expiresAt}`;
@@ -164,7 +164,7 @@ $("#grantBtn").addEventListener("click", async () => {
     toast("Capability issued. The link is on your clipboard.", "good");
     await loadGrants();
   } catch (e) {
-    setStamp($("#grantState"), "failed", "block");
+    setStamp($("#grantState"), "failed", "stop");
     $("#grantOut").textContent = e.message;
     toast(e.message, "bad");
   } finally {
@@ -192,7 +192,7 @@ async function loadGrants() {
         <article class="grant" data-dies="${g.diesAt}" data-key="${g.entityKey}" data-id="${g.grantId}">
           <div class="grant__top">
             <span class="grant__who">${g.verifierName || short(g.verifier, 8, 4)}</span>
-            <span class="stamp stamp--${g.state === "live" ? "run" : g.state === "revoked" ? "block" : "done"}">${g.state}</span>
+            <span class="tag tag--${g.state === "live" ? "warn" : g.state === "revoked" ? "stop" : "on"}">${g.state}</span>
           </div>
           <p class="grant__q">${g.questionSet}${g.threshold ? ` · ${g.threshold}` : ""} · ${g.usesSpent}/${g.usesAllowed} used</p>
           <div class="grant__clock">
@@ -238,8 +238,14 @@ function startClocks() {
         bar.style.width = "0%";
         continue;
       }
-      tweenNumber(blocks, r.blocks, { duration: 280, format: (n) => `${Math.round(n)} blocks` });
-      time.textContent = r.text;
+      if (r.showBlocks) {
+        tweenNumber(blocks, r.blocks, { duration: 280, format: (n) => `${Math.round(n)} blocks` });
+      } else {
+        // six figures of blocks is noise; the duration carries it past a day
+        blocks.dataset.n = String(r.blocks);
+        blocks.textContent = r.text;
+      }
+      time.textContent = r.showBlocks ? r.text : `${r.blocks.toLocaleString()} blocks`;
       // The bar is proportional to the last ten minutes of life, so a 7-day
       // grant does not look identical to a 2-minute one for six days.
       const pct = Math.max(0, Math.min(100, (r.ms / (10 * 60 * 1000)) * 100));
