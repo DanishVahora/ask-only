@@ -136,7 +136,10 @@ export function answerMessage({ requestId, grantId, questionHash, answerHash, en
     requestId: String(requestId),
     grantId: String(grantId),
     questionHash: String(questionHash),
-    answerHash: String(answerHash),
+    // A decline carries no answer, so these are empty strings. String(undefined)
+    // is the literal "undefined", which differs from what the client signed and
+    // made every decline fail as a bad signature.
+    answerHash: String(answerHash ?? ""),
     enclaveRequestId: String(enclaveRequestId ?? ""),
     statement: STATEMENTS.answer,
   };

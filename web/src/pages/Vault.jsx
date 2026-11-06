@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { Plus, Lock, FileText, FileType, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { api, encryptDocument, DOMAIN, TYPES, STATEMENTS, QUESTION_TEXT, short } from "../lib/askonly.js";
+import { api, encryptDocument, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
+import { TOPICS } from "../lib/questions.js";
 import ConnectButton from "../components/ConnectButton.jsx";
 import Inbox from "../components/Inbox.jsx";
 import Sheet from "../components/Sheet.jsx";
@@ -90,8 +91,13 @@ export default function Vault() {
   });
 
   const [doc, setDoc] = useState({ label: "", kind: "payslip", days: 180, pass: "", text: "" });
+  // No `param` and no templated question any more. The owner grants a coarse
+  // right - "you may ask about money" - and the verifier writes the actual
+  // question in their own words. `param` was still being read off TOPICS, which
+  // no longer has it, so the form rendered a field labelled "Value" and could
+  // sign a question reading "Is monthly income above INR ?".
   const [g, setG] = useState({
-    vaultId: "", verifier: "", verifierName: "", set: "income", param: "50000", uses: 3, life: "m:10",
+    vaultId: "", verifier: "", verifierName: "", set: "income", uses: 3, life: "m:10",
   });
 
   const vaults = docs?.vaults ?? [];
@@ -107,7 +113,7 @@ export default function Vault() {
     x.diesAt > Date.now() && x.state === "live" && x.usesSpent < x.usesAllowed;
   const live = all.filter(isLive);
   const past = all.filter((x) => !isLive(x));
-  const question = (QUESTION_TEXT[g.set] ?? (() => ""))(g.param);
+  const topic = TOPICS[g.set];
 
   async function seal() {
     if (!doc.text.trim()) return toast.error("there is nothing to seal yet");
@@ -150,6 +156,9 @@ export default function Vault() {
     try {
       // The owner signs the exact terms; the server verifies this before it
       // spends its own gas. It can pay for a grant but cannot author one.
+      // What is signed is the RIGHT, not a sentence: this person, this topic,
+      // this many times, until this moment.
+      const question = `May ask about ${topic?.label?.toLowerCase() ?? g.set}`;
       const ownerSig = await signTypedDataAsync({
         domain: DOMAIN, types: { Grant: TYPES.Grant }, primaryType: "Grant",
         message: {
@@ -162,7 +171,7 @@ export default function Vault() {
           vaultId, owner: address, verifier: g.verifier,
           verifierName: g.verifierName || short(g.verifier, 6, 4),
           questionSet: g.set, question, usesAllowed: Number(g.uses), diesAt,
-          threshold: g.param, ownerSig,
+          threshold: "", ownerSig,
           minutes: unit === "m" ? Number(n) : null,
           days: unit === "d" ? Number(n) : null,
         },
@@ -403,17 +412,25 @@ export default function Vault() {
             <input className="input" placeholder="landlord.eth"
               value={g.verifierName} onChange={(e) => setG({ ...g, verifierName: e.target.value })} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="field-label">They may ask about</label>
-              <select className="input" value={g.set}
-                onChange={(e) => setG({ ...g, set: e.target.value, param: sets[e.target.value]?.param?.default ?? "" })}>
-                {Object.entries(sets).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="field-label">{sets[g.set]?.param?.name ?? "Value"}</label>
-              <input className="input font-mono" value={g.param} onChange={(e) => setG({ ...g, param: e.target.value })} />
+          <div>
+            <label className="field-label">What they may ask about</label>
+            <div className="grid grid-cols-2 gap-2">
+              {Object.entries(TOPICS).map(([k, t]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setG({ ...g, set: k })}
+                  className={
+                    "rounded-[10px] border px-3.5 py-3 text-left transition-colors " +
+                    (g.set === k
+                      ? "border-ink bg-seal-wash"
+                      : "border-line-2 hover:border-ink-50")
+                  }
+                >
+                  <span className="block text-[0.875rem] font-semibold">{t.label}</span>
+                  <span className="mt-0.5 block text-[0.75rem] leading-snug text-ink-50">{t.blurb}</span>
+                </button>
+              ))}
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -434,8 +451,17 @@ export default function Vault() {
           </div>
 
           <div className="rounded-[12px] border-[1.6px] border-ink bg-paper p-5">
-            <p className="eyebrow">The only thing they can ever ask</p>
-            <p className="mt-3 font-serif text-[1.25rem] leading-tight tracking-[-0.02em]">“{question}”</p>
+            <p className="eyebrow">They will write their own question</p>
+            <p className="mt-3 text-[0.875rem] leading-relaxed text-ink-70">
+              Anything about <strong className="font-semibold text-ink">{topic?.blurb}</strong> —
+              in their words, not a template. You see exactly what they asked before you answer,
+              and you can always turn it down.
+            </p>
+            {topic?.examples?.length > 0 && (
+              <p className="mt-3 font-serif text-[1.0625rem] leading-snug text-ink-50">
+                e.g. “{topic.examples[0]}”
+              </p>
+            )}
           </div>
         </div>
       </Sheet>

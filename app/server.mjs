@@ -447,7 +447,9 @@ const routes = {
         asker,
         askerName: grant.verifierName,
         questionSet: grant.questionSet,
-        question: grant.note,
+        // The verifier's own words, not the grant's suggestion. The grant gives
+        // a coarse right; the exact question is theirs and the owner sees it.
+        question: b.question || grant.note,
         questionHash: b.questionHash,
         askerSig: hexToBytes(b.askerSig),
         days: 7,
@@ -596,38 +598,16 @@ const routes = {
    * local mode, so this endpoint hands over instructions, never an answer, and
    * never receives the 0G key.
    */
-  "POST /api/ask/prepare": async (req, res) => {
-    try {
-      const b = await readBody(req);
-      const set = QUESTION_SETS[b.questionSet];
-      if (!set) return json(res, 400, { error: "unknown question set" });
-      if (!b.plaintext) return json(res, 400, { error: "plaintext is required" });
-
-      const question = canonicalQuestion(b.questionSet, b.param);
-      const m = minimalExtract(b.plaintext, b.questionSet);
-      json(res, 200, {
-        question,
-        questionHash: await sha256hex(question),
-        minimisation: { keptLines: m.keptLines, droppedLines: m.droppedLines, totalLines: m.totalLines },
-        request: {
-          url: `${baseUrl()}/chat/completions`,
-          headers: { "Content-Type": "application/json", "X-0G-Provider-Trust-Mode": "private" },
-          body: {
-            model: DEFAULT_MODEL,
-            max_tokens: MIN_MAX_TOKENS,
-            temperature: 0,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: systemPrompt(b.questionSet) },
-              { role: "user", content: userPrompt(question, m.extract) },
-            ],
-          },
-        },
-      });
-    } catch (e) {
-      json(res, 400, { error: String(e.message).slice(0, 300) });
-    }
-  },
+  /* /api/ask/prepare is deliberately absent.
+   *
+   * It used to take the decrypted document, narrow it server-side and hand back
+   * a prompt. It worked, and it quietly made this process a party that sees your
+   * plaintext - the exact thing the product promises it is not. The browser now
+   * does all of it (web/src/lib/questions.js) and calls the enclave itself.
+   *
+   * The hosted relay below still takes plaintext, because there a browser cannot
+   * reach 0G at all. That instance says so in a permanent banner.
+   */
 
   /**
    * Hosted relay. Only reachable when the browser could not call 0G itself.
@@ -647,8 +627,8 @@ const routes = {
       const b = await readBody(req);
       const r = await askEnclave({
         plaintext: b.plaintext,
-        setName: b.questionSet,
-        param: b.param,
+        question: b.question,
+        topic: b.questionSet,
         apiKey: key,
       });
       json(res, 200, { ...r, relayed: true, operatorSawExtract: true });

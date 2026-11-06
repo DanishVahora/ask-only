@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import clsx from "clsx";
 
 import { api, sha256hex, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
+import { TOPICS } from "../lib/questions.js";
 import ConnectButton from "../components/ConnectButton.jsx";
 import Countdown from "../components/Countdown.jsx";
 import RoleGuide from "../components/RoleGuide.jsx";
@@ -29,6 +30,10 @@ export default function Ask() {
 
   const [requestId, setRequestId] = useState(() => sessionStorage.getItem(`req:${grantId}`) || null);
   const [busy, setBusy] = useState(false);
+  // The verifier writes their own question now. A grant gives a coarse right -
+  // "you may ask about money" - and the exact wording is theirs; the owner sees
+  // it and decides. Four canned templates was not a product.
+  const [question, setQuestion] = useState("");
 
   const { data: grant, error: grantErr } = useQuery({
     queryKey: ["grant", grantId],
@@ -54,7 +59,8 @@ export default function Ask() {
   async function ask() {
     setBusy(true);
     try {
-      const questionHash = await sha256hex(grant.note);
+      const asked = question.trim() || grant.note;
+      const questionHash = await sha256hex(asked);
       const askedAt = Date.now();
       // Signed BEFORE being told anything. You cannot learn the answer without
       // leaving a record that you asked.
@@ -63,7 +69,7 @@ export default function Ask() {
         message: { grantId, questionHash, askedAt: BigInt(askedAt), statement: STATEMENTS.request },
       });
       const res = await api("/api/request", {
-        body: { grantId, questionHash, askedAt, asker: address, askerSig },
+        body: { grantId, questionHash, askedAt, asker: address, askerSig, question: asked },
       });
       sessionStorage.setItem(`req:${grantId}`, res.requestId);
       setRequestId(res.requestId);
@@ -112,7 +118,10 @@ export default function Ask() {
         </div>
 
         <p className="mt-5 font-serif text-[clamp(1.375rem,1.1rem+1vw,1.875rem)] leading-tight tracking-[-0.025em]">
-          “{grant.note}”
+          You may ask about{" "}
+          <span className="italic">
+            {(TOPICS[grant.questionSet]?.label ?? grant.questionSet).toLowerCase()}
+          </span>.
         </p>
 
         <div className="mt-5 grid gap-x-8 gap-y-2 text-[0.8125rem] sm:grid-cols-2">
@@ -130,9 +139,35 @@ export default function Ask() {
               </p>
             </div>
           ) : !requestId ? (
-            <button className="btn btn-primary" onClick={ask} disabled={busy || grant.state !== "live"}>
-              {busy ? "Check your wallet…" : "Sign & ask"}
-            </button>
+            <div className="space-y-4">
+              <div>
+                <label className="field-label">What do you want to know?</label>
+                <textarea
+                  className="input text-[0.9375rem] leading-snug"
+                  rows={2}
+                  placeholder={grant.note || "Ask it in your own words"}
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                />
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(TOPICS[grant.questionSet]?.examples ?? []).map((ex) => (
+                    <button key={ex} onClick={() => setQuestion(ex)}
+                      className="rounded-full border border-line-2 px-2.5 py-1 text-[0.75rem] text-ink-50 transition-colors hover:border-ink hover:text-ink">
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[0.75rem] leading-snug text-ink-50">
+                  Anything about{" "}
+                  <strong className="font-semibold text-ink-70">
+                    {TOPICS[grant.questionSet]?.blurb ?? grant.questionSet}
+                  </strong>. They see exactly what you asked, and can turn it down.
+                </p>
+              </div>
+              <button className="btn btn-primary" onClick={ask} disabled={busy || grant.state !== "live"}>
+                {busy ? "Check your wallet…" : "Sign & send it"}
+              </button>
+            </div>
           ) : (
             <AnimatePresence mode="wait">
               {state === "pending" && (

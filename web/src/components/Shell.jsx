@@ -49,7 +49,9 @@ export default function Shell({ children }) {
     // Named for the role, not the noun: "Ask" alone does not tell you that it
     // is the other person's screen.
     { to: "/vault", label: "My vault", hint: "owner" },
-    { to: "/ask", label: "Asked of me", hint: "verifier" },
+    // That page is where YOU ask someone else. "Asked of me" said the opposite
+    // of the page's own heading.
+    { to: "/ask", label: "Ask someone", hint: "verifier" },
     { to: "/ledger", label: "Ledger", hint: "owner" },
   ];
 

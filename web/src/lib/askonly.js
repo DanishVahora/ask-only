@@ -146,15 +146,32 @@ export const QUESTION_TEXT = {
  */
 export async function askEnclaveDirect(prepared, apiKey, { signal } = {}) {
   const t0 = Date.now();
-  const res = await fetch(prepared.request.url, {
-    method: "POST",
-    headers: { ...prepared.request.headers, Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(prepared.request.body),
-    signal,
-  });
-  if (res.status === 401 || res.status === 403) throw new Error("the 0G key was rejected");
-  if (res.status === 503) throw new Error("private mode found no free TeeML provider — not downgrading");
-  if (!res.ok) throw new Error(`the enclave returned ${res.status}`);
+  // glm-5.3 reasons for 15-20s on a hard question and the router is
+  // intermittently slow. Without a timeout the tab just hangs on "asking the
+  // enclave" with no way back.
+  let res;
+  try {
+    res = await fetch(prepared.url ?? prepared.request.url, {
+      method: "POST",
+      headers: { ...(prepared.headers ?? prepared.request.headers), Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(prepared.body ?? prepared.request.body),
+      signal: signal ?? AbortSignal.timeout(90_000),
+    });
+  } catch (e) {
+    throw new Error(
+      e?.name === "TimeoutError"
+        ? "the enclave did not answer within 90 seconds — try again"
+        : "could not reach the enclave from this browser",
+    );
+  }
+  if (res.status === 401 || res.status === 403) throw new Error("that 0G key was not accepted");
+  if (res.status === 429) throw new Error("that was a lot at once — wait a few seconds and try again");
+  if (res.status === 503)
+    throw new Error(
+      "every sealed machine is busy. We waited rather than sending your document somewhere " +
+        "less private — try once more in a moment",
+    );
+  if (!res.ok) throw new Error(`the sealed machine could not answer right now (${res.status})`);
 
   const json = await res.json();
   const content = json.choices?.[0]?.message?.content ?? "";

@@ -25,7 +25,7 @@
  * because a team that does not check will claim enclave execution it is not getting.
  */
 
-import { systemPrompt, userPrompt, canonicalQuestion, minimalExtract, sha256hex } from "./questions.mjs";
+import { systemPrompt, userPrompt, selectLines, extractFrom, guessTopic, sha256hex } from "./questions.mjs";
 
 export const DEFAULT_MODEL = "glm-5.3";
 
@@ -37,7 +37,7 @@ export const PINNED_PROVIDER = "0xD179F4526064846dE9a9E9D93683AF75CB72E503";
  * an EMPTY string, and a parser that treats "" as a result will score a document
  * it never read. That makes this a correctness floor, not a quality knob.
  */
-export const MIN_MAX_TOKENS = 1500;
+export const MIN_MAX_TOKENS = 3000;
 
 export const baseUrl = () =>
   (process.env.ZEROG_BASE_URL || "https://router-api.0g.ai/v1").replace(/\/+$/, "");
@@ -153,47 +153,80 @@ export async function assertTeeML(model = DEFAULT_MODEL, apiKey) {
  *
  * @param plaintext   the decrypted document - in memory only, never logged,
  *                    never written to disk, never returned to the verifier
- * @param setName     income | identity | tenancy | employment
- * @param param       the question's parameter (a threshold, a name, ...)
+ * @param question    free text, in whatever words the asker used
+ * @param topic       optional coarse topic, for choosing which lines qualify
  * @param apiKey      the OWNER's 0G key. In local mode this comes from the
  *                    owner's own browser and the server never sees it.
  */
-export async function ask({ plaintext, setName, param, apiKey, model = DEFAULT_MODEL, signal }) {
+export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_MODEL, signal }) {
   if (!apiKey) throw new EnclaveError("no 0G key provided", "no-key");
 
-  const question = canonicalQuestion(setName, param);
-  const { extract, keptLines, droppedLines, totalLines } = minimalExtract(plaintext, setName);
+  if (!question?.trim()) throw new EnclaveError("no question was asked", "no-question");
+  const chosen = topic ?? guessTopic(question);
+  const sel = selectLines(plaintext, question, chosen);
+  const { extract, keptLines, droppedLines, totalLines } = extractFrom(sel.lines, sel.suggested);
+  if (!keptLines) {
+    throw new EnclaveError(
+      "no line in this document bears on that question - refusing to send it, because a model " +
+        "given nothing relevant will answer from the question alone",
+      "no-relevant-lines",
+    );
+  }
 
   const attested = await assertTeeML(model, apiKey);
 
   const body = {
     model,
     max_tokens: MIN_MAX_TOKENS,
+    reasoning_effort: "low",
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: systemPrompt(setName) },
+      { role: "system", content: systemPrompt() },
       { role: "user", content: userPrompt(question, extract) },
     ],
   };
 
   const t0 = Date.now();
   let res;
-  // A 503 in private mode means no TeeML provider was free. Retry - never relax
-  // the trust mode. That no-silent-downgrade property is what makes the claim safe.
+  let transport = null;
+  /* Two different retries, for two different failures:
+     - 503 means private mode found no free TeeML provider. Retry; NEVER relax
+       the trust mode, because no-silent-downgrade is what makes the claim safe.
+     - a dead socket. glm-5.3 reasons for 15-20s on a hard question and the
+       router is intermittently slow, so an untimed fetch just hangs until it
+       fails with the useless "fetch failed". */
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    res = await fetch(`${baseUrl()}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "X-0G-Provider-Trust-Mode": "private",
-      },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (res.status !== 503) break;
-    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    try {
+      res = await fetch(`${baseUrl()}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "X-0G-Provider-Trust-Mode": "private",
+        },
+        body: JSON.stringify(body),
+        signal: signal ?? AbortSignal.timeout(90_000),
+      });
+      transport = null;
+    } catch (e) {
+      transport = e;
+      res = null;
+    }
+    // 503 = no free TeeML provider. 429 = we asked too fast, which happens the
+    // moment anyone clicks twice. Both are worth waiting out; neither is a
+    // reason to relax the trust mode.
+    if (res && res.status !== 503 && res.status !== 429) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+  }
+
+  if (!res) {
+    throw new EnclaveError(
+      transport?.name === "TimeoutError"
+        ? "the enclave did not answer within 90s - it is reasoning or the router is slow. Try again."
+        : `could not reach the enclave: ${String(transport?.message ?? "network error").slice(0, 90)}`,
+      "unreachable",
+    );
   }
 
   if (res.status === 401 || res.status === 403) {
@@ -201,8 +234,15 @@ export async function ask({ plaintext, setName, param, apiKey, model = DEFAULT_M
   }
   if (res.status === 503) {
     throw new EnclaveError(
-      "private trust mode found no free TeeML provider after 3 tries. Not downgrading.",
+      "every sealed machine is busy right now. We waited and tried again rather than " +
+        "sending your document somewhere less private. Try once more in a moment.",
       "no-capacity",
+    );
+  }
+  if (res.status === 429) {
+    throw new EnclaveError(
+      "that was a lot of questions at once - 0G is asking us to slow down. Wait a few seconds.",
+      "rate-limited",
     );
   }
   if (!res.ok) throw new EnclaveError(`chat/completions returned ${res.status}`, "http");
@@ -220,11 +260,12 @@ export async function ask({ plaintext, setName, param, apiKey, model = DEFAULT_M
     );
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    throw new EnclaveError("the enclave's reply was not valid JSON", "unparseable");
+  const parsed = parseAnswer(content);
+  if (!parsed) {
+    throw new EnclaveError(
+      `the enclave's reply could not be read as an answer: ${content.slice(0, 80)}`,
+      "unparseable",
+    );
   }
 
   const answer = String(parsed.answer ?? "").toLowerCase();
@@ -280,6 +321,32 @@ export async function ask({ plaintext, setName, param, apiKey, model = DEFAULT_M
     // the non-TeeML providers serving the same model, for the UI's benefit
     nonTeeProviders: attested.nonTee.map((p) => ({ name: p.name, address: p.address })),
   };
+}
+
+/**
+ * Read the answer out of a reply.
+ *
+ * glm-5.3 reasons at length and sometimes wraps its JSON in a markdown fence or
+ * prefixes a sentence. Rejecting the whole reply throws away a correct answer,
+ * so take the first JSON object in it - but still fail if there is not one,
+ * rather than inventing a result.
+ */
+export function parseAnswer(content) {
+  const attempts = [
+    content,
+    content.replace(/^[\s\S]*?```(?:json)?/i, "").replace(/```[\s\S]*$/, ""),
+    (content.match(/\{[\s\S]*\}/) ?? [])[0],
+  ];
+  for (const a of attempts) {
+    if (!a) continue;
+    try {
+      const o = JSON.parse(a.trim());
+      if (o && typeof o === "object" && "answer" in o) return o;
+    } catch {
+      /* try the next shape */
+    }
+  }
+  return null;
 }
 
 /** A leak check we can run on any answer: no figure from the document may appear. */
