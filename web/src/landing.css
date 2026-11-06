@@ -1,0 +1,1261 @@
+/* ===========================================================================
+   The landing page. Paper, ink and a stamp, scoped under .lp.
+
+   Colours mean what they mean on real paperwork: a yellow marker is a line that
+   was read, a black bar is a line that was withheld, a green stamp is a yes and a
+   red one is a no. The sheet of paper itself never moves. Only ink does.
+   =========================================================================== */
+
+@layer components {
+  html:has(.lp) {
+    position: relative;
+  }
+  .lp {
+    --marker: var(--color-marker);
+    --marker-hover: var(--color-marker-hover);
+    overflow-x: clip;
+    color: var(--color-ink);
+    background: var(--color-cream);
+  }
+  .lp-wrap {
+    max-width: 1192px;
+    margin: 0 auto;
+  }
+
+  /* ---- type ------------------------------------------------------------ */
+  .lp h1 em,
+  .lp h2 em {
+    font-style: italic;
+  }
+  .lp-display {
+    font-size: clamp(3.25rem, 1.65rem + 4.5vw, 5.75rem);
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+  }
+  .lp-title {
+    font-size: clamp(2.5rem, 1.75rem + 2.9vw, 4.25rem);
+    line-height: 1;
+    letter-spacing: -0.03em;
+  }
+  .lp-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    font-weight: 500;
+    opacity: 0.68;
+  }
+  .lp-lede {
+    font-size: 1.1875rem;
+    line-height: 1.38;
+    font-weight: 450;
+  }
+  .lp-body {
+    font-size: 1.0625rem;
+    line-height: 1.42;
+    font-weight: 450;
+  }
+  .lp-note {
+    font-size: 0.875rem;
+    line-height: 1.3;
+    color: var(--color-ink-50);
+  }
+
+  /* ---- the action: it presses down, like a stamp ------------------------ */
+  .lp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    height: 3.25rem;
+    padding: 0 1.5rem;
+    font-size: 1rem;
+    line-height: 1;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--color-ink);
+    background: var(--marker);
+    border: 2px solid var(--color-ink);
+    border-radius: 10px;
+    box-shadow: 0 3px 0 var(--color-ink);
+    transition: transform 110ms ease-out, box-shadow 110ms ease-out, background-color 160ms;
+  }
+  .lp-btn:hover {
+    background: var(--marker-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 0 var(--color-ink);
+  }
+  .lp-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 0 0 var(--color-ink);
+  }
+  .lp-btn-sm {
+    height: 2.625rem;
+    padding: 0 1rem;
+    font-size: 0.9375rem;
+    border-radius: 8px;
+  }
+
+  /* ---- nav: a strip of the same paper, with a tear line once it has company */
+  .lp-nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--color-cream);
+  }
+  .lp-nav::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-bottom: 1px dashed var(--color-line-2);
+    opacity: 0;
+    transition: opacity 200ms;
+  }
+  .lp-nav.is-scrolled::after {
+    opacity: 1;
+  }
+  .lp-nav-in {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    max-width: 1240px;
+    height: 68px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+  .lp-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    font-weight: 650;
+    letter-spacing: -0.025em;
+  }
+  .lp-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1.75rem;
+    margin-left: auto;
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  /* A highlighter pass on hover: the same marker that shows which lines were read. */
+  .lp-nav-links a {
+    padding: 0.125rem 0.25rem;
+    color: var(--color-ink-70);
+    background: linear-gradient(var(--marker), var(--marker)) left 75% / 0 62% no-repeat;
+    transition: background-size 220ms var(--ease-brand), color 160ms;
+  }
+  .lp-nav-links a:hover {
+    color: var(--color-ink);
+    background-size: 100% 62%;
+  }
+  .lp-nav-in .lp-btn {
+    margin-left: 0.5rem;
+  }
+
+  /* ---- hero ------------------------------------------------------------- */
+  .lp-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 470px);
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 5.5rem);
+    max-width: 1240px;
+    min-height: calc(100svh - 68px);
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem 3rem;
+  }
+  .lp-hero-copy .lp-display {
+    margin-top: 1.25rem;
+    font-size: clamp(3rem, 1.4rem + 4.1vw, 5rem);
+  }
+  .lp-hero-copy .lp-lede {
+    max-width: 33rem;
+    margin-top: 1.5rem;
+  }
+  .lp-hero-copy .lp-btn {
+    margin-top: 1.75rem;
+  }
+  .lp-hero-copy .lp-note {
+    margin-top: 1.25rem;
+  }
+
+  /* ---- the sheet -------------------------------------------------------- */
+  .pp-wrap {
+    filter: drop-shadow(0 18px 26px rgba(27, 26, 22, 0.16));
+  }
+  .pp {
+    position: relative;
+    padding: 1.125rem 1.5rem 1.25rem;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border-radius: 8px 8px 0 0;
+  }
+  .pp-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.625rem;
+  }
+  .pp-title {
+    font-family: var(--font-serif);
+    font-size: 1.375rem;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+  .pp-status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
+    font-weight: 500;
+    color: var(--color-ink-50);
+    white-space: nowrap;
+  }
+  .pp-lines {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.375rem;
+  }
+  .pp-line {
+    white-space: nowrap;
+  }
+  .pp-text {
+    position: relative;
+    display: inline-block;
+    padding: 0 0.3em;
+    margin-left: -0.3em;
+  }
+  .pp-text b {
+    position: relative;
+    font-weight: 400;
+  }
+  .pp-mark,
+  .pp-bar {
+    position: absolute;
+    inset: 0.12em 0;
+    display: block;
+    border-radius: 2px;
+    transform: scaleX(0);
+    transform-origin: right center;
+    transition: transform 220ms var(--ease-brand);
+  }
+  .pp-mark {
+    background: var(--marker);
+  }
+  .pp-bar {
+    z-index: 1;
+    background: var(--color-ink);
+  }
+  .is-held .pp-bar {
+    transform: scaleX(1);
+    transform-origin: left center;
+    transition: transform 320ms var(--ease-brand) calc(var(--i) * 26ms);
+  }
+  .is-read .pp-mark {
+    transform: scaleX(1);
+    transform-origin: left center;
+    transition: transform 420ms var(--ease-brand) calc(var(--i) * 34ms);
+  }
+
+  /* A rubber stamp: uneven ink, and it lands hard. */
+  .pp-stamp {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1.125rem;
+    z-index: 2;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem 1rem 0.5625rem;
+    font-family: var(--font-serif);
+    font-size: 2.875rem;
+    line-height: 0.95;
+    font-style: italic;
+    letter-spacing: -0.02em;
+    border: 3px solid currentColor;
+    border-radius: 10px;
+    outline: 1px solid currentColor;
+    outline-offset: -8px;
+    transform: rotate(-8deg);
+    mix-blend-mode: multiply;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.6 2.35'/%3E%3C/filter%3E%3Crect width='220' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -2.6 2.35'/%3E%3C/filter%3E%3Crect width='220' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .pp-stamp small {
+    margin-top: 0.25rem;
+    padding-bottom: 0.125rem;
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    line-height: 1;
+    font-style: normal;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .pp-stamp.is-yes {
+    color: var(--color-seal);
+  }
+  .pp-stamp.is-no {
+    color: var(--color-clay);
+  }
+  .pp-stamp.is-unknown {
+    color: var(--color-ink);
+  }
+  .pp-stamp.is-marker {
+    color: var(--marker);
+    mix-blend-mode: normal;
+  }
+
+  /* ---- the ticket torn from the sheet: where the question goes ----------- */
+  .pp-ticket {
+    padding: 0.75rem 1.5rem 1rem;
+    background: var(--color-paper);
+    border-radius: 0 0 8px 8px;
+  }
+  .pp-ticket-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--color-ink-50);
+    white-space: nowrap;
+  }
+  .pp-ask {
+    display: flex;
+    align-items: center;
+    margin-top: 0.5rem;
+    background: #fff;
+    border: 1.5px solid var(--color-line-2);
+    border-radius: 9px;
+    transition: border-color 160ms, box-shadow 160ms;
+  }
+  .pp-ask:focus-within {
+    border-color: var(--color-ink);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker) 55%, transparent);
+  }
+  .pp-ask input {
+    flex: 1;
+    min-width: 0;
+    height: 2.5rem;
+    padding: 0 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--color-ink);
+    background: transparent;
+    outline: none;
+  }
+  .pp-ask input::placeholder {
+    font-weight: 400;
+    color: var(--color-ink-30);
+  }
+  .pp-ask button {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    margin-right: 0.25rem;
+    color: var(--color-on-forest);
+    background: var(--color-forest);
+    border-radius: 7px;
+    transition: opacity 160ms, transform 110ms;
+  }
+  .pp-ask button:disabled {
+    opacity: 0.25;
+    cursor: default;
+  }
+  .pp-ask button:active:not(:disabled) {
+    transform: scale(0.93);
+  }
+  .pp-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+    min-height: 1.75rem;
+  }
+  .pp-chips button {
+    height: 1.75rem;
+    padding: 0 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-ink-70);
+    background: var(--color-cream);
+    border-radius: 6px;
+    transition: background-color 160ms, color 160ms;
+  }
+  .pp-chips button:hover {
+    color: var(--color-ink);
+    background: var(--marker);
+  }
+  .pp-free {
+    min-height: 1.75rem;
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.75rem;
+    color: var(--color-ink-70);
+  }
+  .pp-free a {
+    font-weight: 600;
+    color: var(--color-ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* ---- punched edges, instead of rounded bands --------------------------- */
+  .lp-band {
+    position: relative;
+  }
+  .lp-band::before,
+  .lp-band::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 9px;
+    background-repeat: repeat-x;
+    background-size: 26px 9px;
+  }
+  .lp-band::before {
+    top: 0;
+    background-image: radial-gradient(circle 8px at 13px 0, var(--color-cream) 97%, transparent);
+  }
+  .lp-band::after {
+    bottom: 0;
+    background-image: radial-gradient(circle 8px at 13px 9px, var(--color-cream) 97%, transparent);
+  }
+
+  /* ---- what they ask for ------------------------------------------------- */
+  .lp-asks {
+    padding: clamp(5rem, 12vh, 8rem) 1.5rem;
+    color: var(--color-on-forest);
+    background: var(--color-forest);
+  }
+  .lp-asks ol {
+    margin: 2rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 1.2rem + 2.75vw, 3.75rem);
+    line-height: 1.14;
+    letter-spacing: -0.025em;
+  }
+  .lp-asks li + li {
+    margin-top: 0.3em;
+  }
+  .lp-asks-old {
+    position: relative;
+    display: inline-block;
+  }
+  .lp-asks-old i {
+    position: absolute;
+    top: 56%;
+    left: -0.04em;
+    right: -0.04em;
+    height: 0.065em;
+    background: #ff7a5c;
+    border-radius: 1px;
+    transform-origin: left center;
+  }
+  .lp-asks em {
+    display: inline-block;
+    font-style: italic;
+    color: var(--marker);
+  }
+
+  /* ---- three cards ------------------------------------------------------- */
+  .lp-proof {
+    padding: clamp(5rem, 12vh, 7.5rem) 1.5rem clamp(4rem, 10vh, 6rem);
+  }
+  .lp-proof .lp-title {
+    margin-top: 1rem;
+  }
+  .lp-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.25rem;
+    margin: 3rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .lp-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    background: var(--color-paper);
+    border: 2px solid var(--color-ink);
+    border-radius: 16px;
+  }
+  .lp-card.is-forest {
+    color: var(--color-on-forest);
+    background: var(--color-forest);
+  }
+  .lp-card.is-marker {
+    background: #ffe48a;
+  }
+  .lp-card-demo {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 13rem;
+    color: var(--color-ink);
+  }
+  .lp-card-title {
+    margin-top: 1.75rem;
+    font-family: var(--font-serif);
+    font-size: clamp(1.75rem, 1.4rem + 0.9vw, 2.125rem);
+    line-height: 1.02;
+    font-weight: 400;
+    letter-spacing: -0.025em;
+  }
+  .lp-card-body {
+    margin-top: 0.5rem;
+    font-size: 1rem;
+    line-height: 1.4;
+    font-weight: 450;
+    opacity: 0.78;
+  }
+  .lp-read-code {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 1.5rem;
+    font-weight: 600;
+    background: linear-gradient(var(--marker), var(--marker)) left 75% / 0 62% no-repeat;
+    transition: background-size 220ms var(--ease-brand);
+  }
+  .lp-read-code:hover {
+    background-size: 100% 62%;
+  }
+
+  /* the demos on the cards */
+  .dm-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0 0.75rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .dm-tabs button {
+    flex: none;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-ink-50);
+    background: var(--color-cream-2);
+    border-radius: 8px 8px 0 0;
+    transition: background-color 160ms, color 160ms;
+  }
+  .dm-tabs button.is-on {
+    color: var(--color-ink);
+    background: var(--marker);
+  }
+  .dm-page {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 1.25rem;
+    min-height: 9rem;
+    padding: 1.125rem 1.25rem;
+    background: #fff;
+    border: 2px solid var(--color-ink);
+    border-radius: 10px;
+  }
+  .dm-page p {
+    font-family: var(--font-serif);
+    font-size: 1.5rem;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+  }
+  .dm-rules {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .dm-rules i {
+    display: block;
+    height: 6px;
+    background: var(--color-cream-2);
+    border-radius: 2px;
+  }
+  .dm-rules i:nth-child(2) {
+    width: 78%;
+  }
+  .dm-rules i:nth-child(3) {
+    width: 52%;
+    background: var(--color-ink);
+  }
+  .dm-rows {
+    display: grid;
+    gap: 0.625rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .dm-rows li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.125rem 1rem;
+    font-weight: 600;
+    background: var(--color-paper);
+    border-radius: 10px;
+  }
+  .dm-rows b {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: none;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    border: 2px solid currentColor;
+    border-radius: 6px;
+  }
+  .dm-rows b.is-yes {
+    color: var(--color-seal);
+  }
+  .dm-rows b.is-no {
+    color: var(--color-clay);
+  }
+  /* The receipt comes out of a slot, so it's clipped by the slot's edge. */
+  .dm-slot {
+    padding: 0 1rem;
+    overflow: hidden;
+    border-top: 5px solid var(--color-ink);
+    border-radius: 3px 3px 0 0;
+  }
+  .dm-slot dl {
+    margin: 0;
+    padding: 1rem 1rem 1.125rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: #fff;
+  }
+  .dm-slot dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4375rem 0;
+    border-bottom: 1px dashed var(--color-line-2);
+  }
+  .dm-slot dt {
+    color: var(--color-ink-50);
+  }
+  .dm-slot dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+  }
+  .dm-slot p {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--color-ink-50);
+  }
+
+  /* ---- the small print --------------------------------------------------- */
+  .lp-print {
+    padding: clamp(5rem, 12vh, 8rem) 1.5rem;
+    color: var(--color-on-forest);
+    background: #141512;
+  }
+  .lp-print .lp-title {
+    margin-top: 1rem;
+  }
+  .lp-print ol {
+    margin: clamp(3rem, 8vh, 5rem) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .lp-print li {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    padding: clamp(1.5rem, 4vh, 2.5rem) 0;
+    border-top: 1px dashed rgba(244, 243, 220, 0.2);
+  }
+  .lp-print sup {
+    top: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 2;
+    color: var(--marker);
+  }
+  .lp-print-head {
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 1.3rem + 2.5vw, 3.5rem);
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+  }
+  .lp-print-note {
+    margin-top: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    line-height: 1.4;
+    color: var(--color-on-forest-2);
+  }
+
+  /* ---- questions --------------------------------------------------------- */
+  .lp-faq {
+    padding: clamp(5rem, 12vh, 8rem) 1.5rem;
+  }
+  .lp-faq-in {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+    gap: clamp(2.5rem, 6vw, 6rem);
+  }
+  .lp-faq-side {
+    position: sticky;
+    top: 100px;
+  }
+  .lp-faq-side .lp-title {
+    margin-top: 1rem;
+  }
+  .lp-faq ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-bottom: 1px dashed var(--color-line-2);
+  }
+  .lp-faq li {
+    border-top: 1px dashed var(--color-line-2);
+  }
+  .lp-faq li button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    width: 100%;
+    padding: 1.25rem 0;
+    font-size: 1.125rem;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-align: left;
+  }
+  .lp-faq li svg {
+    flex: none;
+    transition: transform 240ms var(--ease-brand);
+  }
+  .lp-faq li svg.is-on {
+    transform: rotate(45deg);
+  }
+  /* Opens to whatever height the answer needs, and a closed one can't be tabbed into. */
+  .lp-faq-a {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 280ms var(--ease-brand);
+  }
+  .lp-faq-a > div {
+    min-height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    transition: visibility 280ms;
+  }
+  .lp-faq-a.is-open {
+    grid-template-rows: 1fr;
+  }
+  .lp-faq-a.is-open > div {
+    visibility: visible;
+  }
+  .lp-faq .lp-body {
+    max-width: 40rem;
+    padding-bottom: 1.5rem;
+    color: var(--color-ink-70);
+  }
+
+  /* ---- the end ----------------------------------------------------------- */
+  .lp-close {
+    padding: clamp(5.5rem, 14vh, 9rem) 1.5rem;
+    color: var(--color-on-forest);
+    background: var(--color-forest);
+  }
+  .lp-close-in {
+    position: relative;
+  }
+  .lp-close .lp-btn {
+    margin-top: 2.5rem;
+    border-color: var(--color-forest-2);
+    box-shadow: 0 3px 0 var(--color-forest-2);
+  }
+  .lp-close .lp-btn:hover {
+    box-shadow: 0 4px 0 var(--color-forest-2);
+  }
+  .lp-close .lp-btn:active {
+    box-shadow: 0 0 0 var(--color-forest-2);
+  }
+  .lp-close-stamp {
+    right: 0;
+    bottom: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 2.5rem;
+  }
+
+  /* ---- the receipt ------------------------------------------------------- */
+  .lp-foot {
+    padding: clamp(3.5rem, 9vh, 5.5rem) 1.5rem;
+  }
+  .lp-receipt {
+    position: relative;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 1.75rem 1.5rem 1.625rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    background: var(--color-paper);
+    box-shadow: 0 14px 28px rgba(27, 26, 22, 0.1);
+  }
+  .lp-receipt::before,
+  .lp-receipt::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background-repeat: repeat-x;
+    background-size: 16px 8px;
+  }
+  .lp-receipt::before {
+    top: 0;
+    background-image: linear-gradient(135deg, var(--color-cream) 50%, transparent 50%),
+      linear-gradient(225deg, var(--color-cream) 50%, transparent 50%);
+  }
+  .lp-receipt::after {
+    bottom: 0;
+    background-image: linear-gradient(45deg, var(--color-cream) 50%, transparent 50%),
+      linear-gradient(315deg, var(--color-cream) 50%, transparent 50%);
+  }
+  .lp-receipt-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.875rem;
+    color: var(--color-ink-50);
+    border-bottom: 1px dashed var(--color-line-2);
+  }
+  .lp-receipt-head span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: var(--color-ink);
+  }
+  .lp-receipt dl {
+    margin: 0;
+    padding: 0.625rem 0;
+  }
+  .lp-receipt dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.3125rem 0;
+  }
+  .lp-receipt dt {
+    color: var(--color-ink-50);
+  }
+  .lp-receipt dd {
+    margin: 0;
+    font-weight: 500;
+    text-align: right;
+  }
+  .lp-receipt dd a {
+    text-decoration: underline;
+    text-decoration-style: dashed;
+    text-underline-offset: 3px;
+    transition: background-color 160ms;
+  }
+  .lp-receipt dd a:hover {
+    background: var(--marker);
+    text-decoration: none;
+  }
+  .lp-receipt-end {
+    padding-top: 0.875rem;
+    line-height: 1.5;
+    color: var(--color-ink-50);
+    border-top: 1px dashed var(--color-line-2);
+  }
+
+  /* ---- the scroll story: the sheet holds still while the world changes ---- */
+  .st {
+    position: relative;
+    height: 400vh;
+    scroll-margin-top: -96px;
+  }
+  .st-stage {
+    position: sticky;
+    top: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+    align-items: center;
+    gap: clamp(2.5rem, 5vw, 5.5rem);
+    height: 100svh;
+    padding: 76px max(1.5rem, calc((100% - 1192px) / 2)) 28px;
+    overflow: hidden;
+  }
+  .st-edge {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 9px;
+    background: radial-gradient(circle 8px at 13px 9px, var(--color-cream) 97%, transparent) 0 0 / 26px 9px repeat-x;
+  }
+  .st-rail {
+    height: 2px;
+    max-width: 18rem;
+    margin-top: 0.875rem;
+    overflow: hidden;
+    background: repeating-linear-gradient(to right, currentColor 0 5px, transparent 5px 10px);
+    opacity: 0.9;
+  }
+  .st-rail i {
+    display: block;
+    height: 100%;
+    background: var(--marker);
+    box-shadow: 0 0 0 1px var(--marker);
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+  .st-copies {
+    position: relative;
+    height: clamp(13rem, 34vh, 17rem);
+    margin-top: 2rem;
+  }
+  .st-step {
+    position: absolute;
+    inset: 0 0 auto 0;
+    will-change: opacity, transform;
+  }
+  .st-step .lp-lede {
+    max-width: 31rem;
+    margin-top: 1.25rem;
+  }
+  .st-paper {
+    position: relative;
+  }
+  .st-sheet {
+    position: relative;
+    z-index: 2;
+    filter: drop-shadow(0 18px 26px rgba(10, 12, 10, 0.2));
+  }
+  .st-sheet .pp {
+    border-radius: 8px;
+  }
+  .st .pp-mark,
+  .st .pp-bar {
+    transform-origin: left center;
+    transition: none;
+    will-change: transform;
+  }
+  .st-wax {
+    position: absolute;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    width: 5.5rem;
+    height: 5.5rem;
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+  .st .pp-stamp {
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+  .st-end {
+    top: 26%;
+    right: 1.5rem;
+    bottom: auto;
+    width: 9.5rem;
+    padding: 0.625rem 0.5rem 0.6875rem;
+    font-size: 1.875rem;
+    line-height: 1;
+    text-align: center;
+  }
+  .st-reply {
+    position: absolute;
+    right: 2.5rem;
+    bottom: 2.5rem;
+    z-index: 3;
+    padding: 0.25rem 0.875rem 0.3125rem;
+    font-family: var(--font-serif);
+    font-size: 1.625rem;
+    line-height: 1.1;
+    font-style: italic;
+    color: var(--color-ink);
+    background: var(--marker);
+    border-radius: 8px;
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+  .st-q {
+    position: absolute;
+    top: -3.375rem;
+    right: 0;
+    z-index: 4;
+    padding: 0.5rem 0.875rem 0.5625rem;
+    white-space: nowrap;
+    font-size: 0.9375rem;
+    line-height: 1.25;
+    font-weight: 600;
+    color: var(--color-ink);
+    background: var(--marker);
+    border: 2px solid var(--color-ink);
+    border-radius: 10px;
+    opacity: 0;
+    will-change: opacity, transform;
+  }
+  .st-q small {
+    display: block;
+    margin-bottom: 0.125rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    opacity: 0.68;
+  }
+  /* Slides out from under the sheet, so it's clipped by nothing but the sheet above it. */
+  .st-ticket {
+    position: relative;
+    z-index: 1;
+    margin-top: -2px;
+    padding: 0.875rem 1.5rem 0.875rem;
+    color: var(--color-ink);
+    background: var(--color-paper);
+    border-radius: 0 0 8px 8px;
+    transform: translateY(-100%);
+    transform-origin: left top;
+    will-change: opacity, transform;
+  }
+  .st-tear {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: repeating-linear-gradient(to right, var(--color-line-2) 0 5px, transparent 5px 9px);
+  }
+  .st-tear i {
+    display: block;
+    height: 100%;
+    background: var(--color-clay);
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+  .st-ticket-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-ink-70);
+    white-space: nowrap;
+  }
+  .st-ticket-top b {
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .st-lives {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    text-align: center;
+    background: var(--color-cream-2);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .st-lives i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 25%;
+    background: var(--marker);
+    will-change: transform;
+  }
+  .st-lives span {
+    position: relative;
+    padding: 0.3125rem 0;
+    white-space: nowrap;
+  }
+  .st-signed {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--color-ink-70);
+    opacity: 0;
+  }
+
+  /* with reduced motion */
+  .st-still {
+    padding: clamp(4rem, 10vh, 6rem) 1.5rem;
+  }
+  .st-still-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+    align-items: start;
+    gap: clamp(2.5rem, 5vw, 5.5rem);
+  }
+  .st-still-steps {
+    display: grid;
+    gap: 2.5rem;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .st-still .lp-lede {
+    margin-top: 0.875rem;
+  }
+  .st-still .pp {
+    border-radius: 8px;
+    box-shadow: 0 18px 26px rgba(27, 26, 22, 0.16);
+  }
+
+  /* ---- short laptop screens ---------------------------------------------- */
+  @media (max-height: 760px) and (min-width: 900px) {
+    .pp-lines {
+      font-size: 0.78125rem;
+      line-height: 1.3125rem;
+    }
+    .lp-hero {
+      padding-bottom: 1.75rem;
+    }
+    .st-stage {
+      padding-top: 72px;
+      padding-bottom: 20px;
+    }
+    .st-lives,
+    .st-signed {
+      margin-top: 0.375rem;
+    }
+    .st-ticket {
+      padding-top: 0.625rem;
+      padding-bottom: 0.625rem;
+    }
+  }
+
+  /* ---- one column -------------------------------------------------------- */
+  @media (max-width: 899px) {
+    .lp-nav-links {
+      display: none;
+    }
+    .lp-nav-in {
+      justify-content: space-between;
+      height: 60px;
+      padding: 0 1.25rem;
+    }
+    .lp-hero {
+      grid-template-columns: minmax(0, 1fr);
+      min-height: 0;
+      padding: 1.5rem 1.25rem 3.5rem;
+    }
+    .lp-asks,
+    .lp-proof,
+    .lp-print,
+    .lp-faq,
+    .lp-close,
+    .lp-foot {
+      padding-left: 1.25rem;
+      padding-right: 1.25rem;
+    }
+
+    .lp-cards {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lp-faq-in {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .lp-faq-side {
+      position: static;
+    }
+    .lp-close-stamp {
+      position: relative;
+      right: auto;
+      bottom: auto;
+      margin-top: 2.5rem;
+      margin-left: 0.5rem;
+    }
+
+    /* The story: words above, sheet below, still pinned, and all of it on one
+       screen of a small phone. The sheet's lines share whatever height is left. */
+    .st-stage {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+      align-items: start;
+      gap: 0.625rem;
+      padding: 68px 1.25rem 12px;
+    }
+    .st-rail {
+      margin-top: 0.625rem;
+    }
+    .st-copies {
+      height: 10.5rem;
+      margin-top: 0.75rem;
+    }
+    .st-step .lp-title {
+      font-size: 1.875rem;
+    }
+    .st-step .lp-lede {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      line-height: 1.32;
+    }
+    .st .pp {
+      padding: 0.625rem 0.875rem 0.75rem;
+    }
+    .st .pp-head {
+      margin-bottom: 0.375rem;
+    }
+    .st .pp-lines {
+      font-size: clamp(0.625rem, calc((100svh - 420px) / 22), 0.6875rem);
+      line-height: clamp(0.8125rem, calc((100svh - 420px) / 16), 1.0625rem);
+    }
+    .st .pp-title {
+      font-size: 1.0625rem;
+    }
+    /* No room above the sheet on a phone, so the question lands on the ticket, which
+       says the same thing: the landlord is asking. The sheet's status stays readable. */
+    .st-q {
+      top: auto;
+      bottom: 0.375rem;
+      left: 0.375rem;
+      right: 0.375rem;
+      font-size: 0.8125rem;
+      white-space: normal;
+    }
+    .st-end {
+      top: 18%;
+      width: 7.5rem;
+      font-size: 1.5rem;
+    }
+    .st-ticket {
+      padding: 0.5rem 0.875rem;
+    }
+    .st-signed {
+      display: none;
+    }
+    .st-wax {
+      width: 4rem;
+      height: 4rem;
+    }
+    .st .pp-stamp:not(.st-end) {
+      font-size: 2.25rem;
+    }
+    .st-still-in {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}
