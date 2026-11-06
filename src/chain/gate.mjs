@@ -144,7 +144,14 @@ export async function permissionSurface(asker, label, which = "demo") {
 }
 
 /** May this asker ask this one set? Single pinned read. */
+/** The four on-chain role bits. A scope outside them falls back to `income`,
+ *  which the gate treats as the general "may ask about this name" right -
+ *  the owner is the real enforcement point and reads every question anyway. */
+export const roleTagFor = (questionSet) =>
+  ["income", "identity", "tenancy", "employment"].includes(questionSet) ? questionSet : "income";
+
 export async function mayAsk(asker, label, questionSet, which = "demo") {
+  questionSet = roleTagFor(questionSet);
   if (wiringError) throw new Error(wiringError);
   const address = which === "prod" ? addresses.gate : addresses.gateDemo;
   const pub = client();

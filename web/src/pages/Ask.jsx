@@ -118,10 +118,7 @@ export default function Ask() {
         </div>
 
         <p className="mt-5 font-serif text-[clamp(1.375rem,1.1rem+1vw,1.875rem)] leading-tight tracking-[-0.025em]">
-          You may ask about{" "}
-          <span className="italic">
-            {(TOPICS[grant.questionSet]?.label ?? grant.questionSet).toLowerCase()}
-          </span>.
+          You may ask about <span className="italic">{grant.note || "this document"}</span>.
         </p>
 
         <div className="mt-5 grid gap-x-8 gap-y-2 text-[0.8125rem] sm:grid-cols-2">
@@ -150,7 +147,7 @@ export default function Ask() {
                   onChange={(e) => setQuestion(e.target.value)}
                 />
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(TOPICS[grant.questionSet]?.examples ?? []).map((ex) => (
+                  {(TOPICS[grant.questionSet]?.examples ?? TOPICS.income.examples).map((ex) => (
                     <button key={ex} onClick={() => setQuestion(ex)}
                       className="rounded-full border border-line-2 px-2.5 py-1 text-[0.75rem] text-ink-50 transition-colors hover:border-ink hover:text-ink">
                       {ex}
@@ -158,10 +155,9 @@ export default function Ask() {
                   ))}
                 </div>
                 <p className="mt-2 text-[0.75rem] leading-snug text-ink-50">
-                  Anything about{" "}
-                  <strong className="font-semibold text-ink-70">
-                    {TOPICS[grant.questionSet]?.blurb ?? grant.questionSet}
-                  </strong>. They see exactly what you asked, and can turn it down.
+                  Keep it to{" "}
+                  <strong className="font-semibold text-ink-70">{grant.note || "this document"}</strong>.
+                  They read exactly what you asked, and can turn it down.
                 </p>
               </div>
               <button className="btn btn-primary" onClick={ask} disabled={busy || grant.state !== "live"}>

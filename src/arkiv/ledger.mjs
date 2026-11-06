@@ -429,7 +429,8 @@ export async function grantsOf(reader, owner, limit = 50) {
     .select({
       $key: true, $expiresAt: true,
       grantId: true, vaultId: true, verifierName: true, verifier: true, questionSet: true,
-      state: true, usesAllowed: true, usesSpent: true, diesAt: true, issuedAt: true, threshold: true,
+      state: true, usesAllowed: true, usesSpent: true, diesAt: true, issuedAt: true,
+      threshold: true, note: true,
     })
     .from(Grant)
     .where(eq("owner", addr(owner)))
@@ -450,6 +451,7 @@ export async function grantsOf(reader, owner, limit = 50) {
     diesAt: Number(val(e, "diesAt")),
     issuedAt: Number(val(e, "issuedAt")),
     threshold: val(e, "threshold"),
+    note: val(e, "note"),
   }));
 }
 

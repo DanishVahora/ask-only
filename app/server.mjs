@@ -365,7 +365,12 @@ const routes = {
     if (!ctx) return json(res, 503, { error: bootError });
     try {
       const b = await readBody(req);
-      if (!TOPICS[b.questionSet]) return json(res, 400, { error: "unknown question set" });
+      // questionSet is a coarse tag derived from the owner's own words, not a
+      // choice from a fixed menu - it only exists to pick an ENSv2 role bit.
+      // Rejecting anything outside a hardcoded list would put the limit back.
+      if (!b.question?.trim()) {
+        return json(res, 400, { error: "say what they may ask about" });
+      }
 
       // The owner signed these exact terms. Verify before spending our gas on
       // them - this is what makes the paymaster arrangement honest.

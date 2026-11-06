@@ -74,12 +74,12 @@ export default function PermissionTicket({ grant, onRevoke }) {
         <p
           className={clsx(
             "mt-3 font-serif text-[1.25rem] leading-[1.15] tracking-[-0.02em]",
-            over ? "text-ink-30 line-through decoration-1" : "text-ink",
+            over ? "text-ink-30" : "text-ink",
           )}
         >
-          {/* Never fall back to the question-set slug: "income" set in serif
-              at 20px is the worst string this screen can produce. */}
-          “{grant.note || "(the signed question is unavailable)"}”
+          {/* A grant is a RIGHT, not a question - the verifier writes the
+              question themselves - and the scope is the owner's own words. */}
+          They may ask about <span className="italic">{grant.note || "this document"}</span>.
         </p>
       </div>
 

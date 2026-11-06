@@ -6,7 +6,7 @@ import { Plus, Lock, FileText, FileType, Image as ImageIcon } from "lucide-react
 import { toast } from "sonner";
 
 import { api, encryptDocument, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
-import { TOPICS } from "../lib/questions.js";
+import { TOPICS, guessTopic } from "../lib/questions.js";
 import ConnectButton from "../components/ConnectButton.jsx";
 import Inbox from "../components/Inbox.jsx";
 import Sheet from "../components/Sheet.jsx";
@@ -90,14 +90,19 @@ export default function Vault() {
     refetchInterval: 15_000,
   });
 
-  const [doc, setDoc] = useState({ label: "", kind: "payslip", days: 180, pass: "", text: "" });
+  // `kind` is free text now. A fixed list of five document types was a limit
+  // with nothing behind it - nothing in the protocol cares what you call it.
+  const [doc, setDoc] = useState({ label: "", kind: "", days: 180, pass: "", text: "" });
   // No `param` and no templated question any more. The owner grants a coarse
   // right - "you may ask about money" - and the verifier writes the actual
   // question in their own words. `param` was still being read off TOPICS, which
   // no longer has it, so the form rendered a field labelled "Value" and could
   // sign a question reading "Is monthly income above INR ?".
+  // `scope` is the owner's own words for what this person may ask about.
+  // Four fixed topics were never doing real work: the owner reads every
+  // question and decides, so THEY are the enforcement point, not a taxonomy.
   const [g, setG] = useState({
-    vaultId: "", verifier: "", verifierName: "", set: "income", uses: 3, life: "m:10",
+    vaultId: "", verifier: "", verifierName: "", scope: "", uses: 3, life: "m:10",
   });
 
   const vaults = docs?.vaults ?? [];
@@ -113,7 +118,7 @@ export default function Vault() {
     x.diesAt > Date.now() && x.state === "live" && x.usesSpent < x.usesAllowed;
   const live = all.filter(isLive);
   const past = all.filter((x) => !isLive(x));
-  const topic = TOPICS[g.set];
+  const scope = g.scope.trim();
 
   async function seal() {
     if (!doc.text.trim()) return toast.error("there is nothing to seal yet");
@@ -123,13 +128,13 @@ export default function Vault() {
       const e = await encryptDocument(doc.text, doc.pass);
       const res = await api("/api/vault", {
         body: {
-          owner: address, label: doc.label || "Untitled", docKind: doc.kind,
+          owner: address, label: doc.label || "Untitled", docKind: doc.kind || "document",
           sha256: e.sha256, iv: e.iv, cipher: e.cipherHex, days: Number(doc.days),
         },
       });
       toast.success(`Sealed — ${e.bytesLen.toLocaleString()} bytes, unreadable without your passphrase.`);
       setSheet(null);
-      setDoc({ label: "", kind: "payslip", days: 180, pass: "", text: "" });
+      setDoc({ label: "", kind: "", days: 180, pass: "", text: "" });
       setG((s) => ({ ...s, vaultId: res.vaultId }));
       qc.invalidateQueries({ queryKey: ["vaults", address] });
     } catch (err) {
@@ -149,6 +154,7 @@ export default function Vault() {
     if (g.verifier.toLowerCase() === address.toLowerCase()) {
       return toast.error("issue it to the other person's address, not your own");
     }
+    if (!scope) return toast.error("say what they may ask about");
 
     const [unit, n] = g.life.split(":");
     const diesAt = Date.now() + (unit === "m" ? Number(n) * 60_000 : Number(n) * 86_400_000);
@@ -158,11 +164,12 @@ export default function Vault() {
       // spends its own gas. It can pay for a grant but cannot author one.
       // What is signed is the RIGHT, not a sentence: this person, this topic,
       // this many times, until this moment.
-      const question = `May ask about ${topic?.label?.toLowerCase() ?? g.set}`;
+      // Signed verbatim: this is what the owner said they may ask about.
+      const question = scope;
       const ownerSig = await signTypedDataAsync({
         domain: DOMAIN, types: { Grant: TYPES.Grant }, primaryType: "Grant",
         message: {
-          vaultId, verifier: g.verifier, questionSet: g.set, question,
+          vaultId, verifier: g.verifier, questionSet: guessTopic(scope) ?? "general", question,
           usesAllowed: BigInt(g.uses), diesAt: BigInt(diesAt), statement: STATEMENTS.grant,
         },
       });
@@ -170,7 +177,8 @@ export default function Vault() {
         body: {
           vaultId, owner: address, verifier: g.verifier,
           verifierName: g.verifierName || short(g.verifier, 6, 4),
-          questionSet: g.set, question, usesAllowed: Number(g.uses), diesAt,
+          questionSet: guessTopic(scope) ?? "general",
+          question, usesAllowed: Number(g.uses), diesAt,
           threshold: "", ownerSig,
           minutes: unit === "m" ? Number(n) : null,
           days: unit === "d" ? Number(n) : null,
@@ -311,7 +319,7 @@ export default function Vault() {
           // The plaintext was only needed while this sheet was open. Leaving it
           // in React state keeps a decrypted document alive for the life of the
           // page, which is not a thing this product should do.
-          setDoc({ label: "", kind: "payslip", days: 180, pass: "", text: "" });
+          setDoc({ label: "", kind: "", days: 180, pass: "", text: "" });
           setSheet(null);
         }}
         title="Seal a document"
@@ -350,14 +358,19 @@ export default function Vault() {
                 value={doc.label} onChange={(e) => setDoc({ ...doc, label: e.target.value })} />
             </div>
             <div>
-              <label className="field-label">Kind</label>
-              <select className="input" value={doc.kind} onChange={(e) => setDoc({ ...doc, kind: e.target.value })}>
-                <option value="payslip">Payslip</option>
-                <option value="bank">Bank statement</option>
-                <option value="rent">Rent agreement</option>
-                <option value="identity">Identity document</option>
-                <option value="other">Other</option>
-              </select>
+              <label className="field-label">What kind of thing is it?</label>
+              <input
+                className="input"
+                list="askonly-kinds"
+                placeholder="payslip, lease, transcript, anything"
+                value={doc.kind}
+                onChange={(e) => setDoc({ ...doc, kind: e.target.value })}
+              />
+              <datalist id="askonly-kinds">
+                {["payslip", "bank statement", "rent agreement", "identity document",
+                  "transcript", "medical report", "invoice", "insurance policy",
+                  "tax return", "contract"].map((k) => <option key={k} value={k} />)}
+              </datalist>
             </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -413,25 +426,29 @@ export default function Vault() {
               value={g.verifierName} onChange={(e) => setG({ ...g, verifierName: e.target.value })} />
           </div>
           <div>
-            <label className="field-label">What they may ask about</label>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(TOPICS).map(([k, t]) => (
+            <label className="field-label">What may they ask about?</label>
+            <textarea
+              className="input text-[0.9375rem] leading-snug"
+              rows={2}
+              placeholder="whether I earn enough to cover the rent"
+              value={g.scope}
+              onChange={(e) => setG({ ...g, scope: e.target.value })}
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.values(TOPICS).map((t) => (
                 <button
-                  key={k}
+                  key={t.label}
                   type="button"
-                  onClick={() => setG({ ...g, set: k })}
-                  className={
-                    "rounded-[10px] border px-3.5 py-3 text-left transition-colors " +
-                    (g.set === k
-                      ? "border-ink bg-seal-wash"
-                      : "border-line-2 hover:border-ink-50")
-                  }
+                  onClick={() => setG({ ...g, scope: t.blurb })}
+                  className="rounded-full border border-line-2 px-2.5 py-1 text-[0.75rem] text-ink-50 transition-colors hover:border-ink hover:text-ink"
                 >
-                  <span className="block text-[0.875rem] font-semibold">{t.label}</span>
-                  <span className="mt-0.5 block text-[0.75rem] leading-snug text-ink-50">{t.blurb}</span>
+                  {t.blurb}
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[0.75rem] leading-snug text-ink-50">
+              Your words, not a category. You read every question before answering.
+            </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -451,17 +468,14 @@ export default function Vault() {
           </div>
 
           <div className="rounded-[12px] border-[1.6px] border-ink bg-paper p-5">
-            <p className="eyebrow">They will write their own question</p>
+            <p className="eyebrow">What they will see</p>
+            <p className="mt-3 font-serif text-[1.25rem] leading-tight tracking-[-0.02em]">
+              “You may ask about {scope || "…"}”
+            </p>
             <p className="mt-3 text-[0.875rem] leading-relaxed text-ink-70">
-              Anything about <strong className="font-semibold text-ink">{topic?.blurb}</strong> —
-              in their words, not a template. You see exactly what they asked before you answer,
+              They write the actual question in their own words. You read it before you answer,
               and you can always turn it down.
             </p>
-            {topic?.examples?.length > 0 && (
-              <p className="mt-3 font-serif text-[1.0625rem] leading-snug text-ink-50">
-                e.g. “{topic.examples[0]}”
-              </p>
-            )}
           </div>
         </div>
       </Sheet>
