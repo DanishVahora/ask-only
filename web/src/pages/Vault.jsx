@@ -119,6 +119,11 @@ export default function Vault() {
   const live = all.filter(isLive);
   const past = all.filter((x) => !isLive(x));
   const scope = g.scope.trim();
+  // Illustrative only: whatever topic the owner's words resemble, borrow one of
+  // its example questions so the difference between a scope and a question is
+  // visible rather than described.
+  const example =
+    (TOPICS[guessTopic(scope) ?? ""]?.examples ?? TOPICS.income.examples)[0];
 
   async function seal() {
     if (!doc.text.trim()) return toast.error("there is nothing to seal yet");
@@ -467,15 +472,29 @@ export default function Vault() {
             </div>
           </div>
 
-          <div className="rounded-[12px] border-[1.6px] border-ink bg-paper p-5">
-            <p className="eyebrow">What they will see</p>
-            <p className="mt-3 font-serif text-[1.25rem] leading-tight tracking-[-0.02em]">
-              “You may ask about {scope || "…"}”
-            </p>
-            <p className="mt-3 text-[0.875rem] leading-relaxed text-ink-70">
-              They write the actual question in their own words. You read it before you answer,
-              and you can always turn it down.
-            </p>
+          {/* Two halves on purpose. Quoting the scope in serif made it look
+              like the question being set, when it is the fence around a
+              question somebody else will write. Showing both removes the
+              ambiguity without a paragraph explaining it. */}
+          <div className="overflow-hidden rounded-[12px] border-[1.6px] border-ink bg-paper">
+            <div className="p-5">
+              <p className="eyebrow">You are allowing</p>
+              <p className="mt-2 text-[0.9375rem] leading-snug">
+                Questions about{" "}
+                <strong className="font-semibold">{scope || "…"}</strong>
+              </p>
+            </div>
+
+            <div className="border-t border-dashed border-line-2 bg-cream-2 p-5">
+              <p className="eyebrow">They might ask</p>
+              <p className="mt-2 font-serif text-[1.125rem] leading-snug text-ink-50">
+                “{example}”
+              </p>
+              <p className="mt-2 text-[0.75rem] leading-snug text-ink-50">
+                Only an example — they write their own, and you read the real one
+                before you answer.
+              </p>
+            </div>
           </div>
         </div>
       </Sheet>
