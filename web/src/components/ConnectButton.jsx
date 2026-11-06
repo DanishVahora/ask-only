@@ -23,13 +23,31 @@ export default function ConnectButton({ size = "sm", className }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
 
+  // wagmi always lists the generic injected() connector, even when no wallet
+  // is installed, and its name is the literal string "Injected" — which must
+  // never reach a button. Drop it when a real EIP-6963 wallet announced
+  // itself, keep it only as a last resort, and give it a human name.
+  const hasInjectedProvider = typeof window !== "undefined" && Boolean(window.ethereum);
   const seen = new Set();
-  const wallets = connectors.filter((c) => {
-    const key = (c.name || "").toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const wallets = connectors
+    .filter((c) => {
+      const name = (c.name || "").trim();
+      if (!name) return false;
+      const generic = /^injected$/i.test(name);
+      // a generic entry is only useful if nothing specific was discovered
+      if (generic && connectors.some((o) => !/^injected$/i.test((o.name || "").trim()))) return false;
+      if (generic && !hasInjectedProvider) return false;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((c) => ({
+      connector: c,
+      name: /^injected$/i.test((c.name || "").trim()) ? "Browser wallet" : c.name,
+      icon: c.icon,
+      uid: c.uid,
+    }));
 
   useEffect(() => {
     if (!open) return;
@@ -66,9 +84,10 @@ export default function ConnectButton({ size = "sm", className }) {
         href="https://ethereum.org/en/wallets/find-wallet/"
         target="_blank"
         rel="noreferrer"
+        title="AskOnly needs a browser wallet — your address is your identity here"
       >
         <Wallet size={size === "sm" ? 15 : 18} />
-        No wallet found
+        Install a wallet
       </a>
     );
   }
@@ -79,7 +98,7 @@ export default function ConnectButton({ size = "sm", className }) {
     return (
       <button
         className={clsx("btn btn-primary", size === "sm" ? "btn-sm" : "btn-lg", className)}
-        onClick={() => connect({ connector: only })}
+        onClick={() => connect({ connector: only.connector })}
         disabled={isPending}
       >
         {only.icon ? (
@@ -87,7 +106,11 @@ export default function ConnectButton({ size = "sm", className }) {
         ) : (
           <Wallet size={size === "sm" ? 15 : 18} />
         )}
-        {isPending ? "Check your wallet…" : `Connect ${only.name}`}
+        {isPending
+          ? "Check your wallet…"
+          : only.name === "Browser wallet"
+            ? "Connect wallet"
+            : `Connect ${only.name}`}
       </button>
     );
   }
@@ -120,7 +143,7 @@ export default function ConnectButton({ size = "sm", className }) {
               <button
                 key={c.uid}
                 onClick={() => {
-                  connect({ connector: c });
+                  connect({ connector: c.connector });
                   setOpen(false);
                 }}
                 className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left text-[0.875rem] font-medium transition-colors hover:bg-cream-2"
