@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
-import { useAccount, useSignTypedData } from "wagmi";
+import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import clsx from "clsx";
 
-import { api, DOMAIN, TYPES, STATEMENTS } from "../lib/askonly.js";
+import { api, TYPES, STATEMENTS } from "../lib/askonly.js";
 import { grantsQuery, useAnswering } from "../lib/answering.jsx";
+import { useSessions } from "../lib/session.js";
 import ConnectButton from "../components/ConnectButton.jsx";
 import DocumentTile from "../components/DocumentTile.jsx";
 import SealSheet from "../components/SealSheet.jsx";
@@ -39,7 +40,7 @@ const FILL = { 1: "xl:col-span-1", 2: "xl:col-span-2", 3: "xl:col-span-3" };
 
 export default function Documents() {
   const { address, isConnected } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
+  const { signAndSend } = useSessions();
   const qc = useQueryClient();
   const answering = useAnswering();
   const now = useNow(5000);
@@ -59,7 +60,7 @@ export default function Documents() {
 
   const vaults = useMemo(() => docs?.vaults ?? [], [docs]);
   const live = (grantData?.grants ?? []).filter(
-    (g) => g.state === "live" && g.diesAt > now && g.usesSpent < g.usesAllowed,
+    (g) => g.state === "live" && g.diesAt > now,
   );
   const reviewersOf = (vaultId) => live.filter((g) => g.vaultId === vaultId);
 
@@ -85,13 +86,10 @@ export default function Documents() {
   async function remove(d) {
     setBusy(true);
     try {
-      const ownerSig = await signTypedDataAsync({
-        domain: DOMAIN,
-        types: { Forget: TYPES.Forget },
-        primaryType: "Forget",
-        message: { vaultId: d.vaultId, statement: STATEMENTS.forget },
-      });
-      await api("/api/vault/forget", { body: { vaultId: d.vaultId, owner: address, ownerSig } });
+      await signAndSend(
+        { types: { Forget: TYPES.Forget }, primaryType: "Forget", message: { vaultId: d.vaultId, statement: STATEMENTS.forget } },
+        ({ sig, session }) => api("/api/vault/forget", { body: { vaultId: d.vaultId, owner: address, ownerSig: sig, session } }),
+      );
       answering.stop(d.vaultId);
       toast.success(`${d.label} is deleted`);
       setDeleting(null);

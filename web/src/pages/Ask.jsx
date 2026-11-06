@@ -11,6 +11,7 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { api, sha256hex, remaining, DOMAIN, TYPES, STATEMENTS, short, timeAgo } from "../lib/askonly.js";
 import { ANY_TOPIC } from "../lib/questions.js";
 import ConnectButton from "../components/ConnectButton.jsx";
+import { useSessions, heldSession, forgetSession, sessionRefused } from "../lib/session.js";
 import { Fact, PageHead, Reading, Rise, useNow } from "../components/ui.jsx";
 
 const QUESTION_MAX = 120;
@@ -204,6 +205,7 @@ function dropEndedAskKeys() {
 function Composer({ grantId, onSending, onSent, onFailed }) {
   const { address } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
+  const sessions = useSessions();
   // The thread's own query, from the cache. The key is tied to this permission's end.
   const { data: grant } = useQuery({
     queryKey: ["grant", grantId],
@@ -222,8 +224,8 @@ function Composer({ grantId, onSending, onSent, onFailed }) {
 
   useEffect(() => {
     dropEndedAskKeys();
-    setKeyed(Boolean(address && diesAt && heldAskKey(grantId, address, diesAt)));
-  }, [grantId, address, diesAt]);
+    setKeyed(Boolean(address && diesAt && (sessions.on ? heldSession(address) : heldAskKey(grantId, address, diesAt))));
+  }, [grantId, address, diesAt, sessions.on]);
 
   async function ask() {
     if (!text || busy || tooLong || !diesAt) return;
@@ -233,31 +235,45 @@ function Composer({ grantId, onSending, onSent, onFailed }) {
     let askedAt;
     try {
       questionHash = await sha256hex(text);
-      let key = heldAskKey(grantId, address, diesAt);
-      if (!key) {
-        // The only wallet popup for this permission.
-        const privateKey = generatePrivateKey();
-        const account = privateKeyToAccount(privateKey);
-        const sig = await signTypedDataAsync({
-          domain: DOMAIN,
-          types: { AskKey: TYPES.AskKey },
-          primaryType: "AskKey",
-          message: { grantId, sessionKey: account.address, diesAt: BigInt(diesAt), statement: STATEMENTS.askKey },
-        });
-        localStorage.setItem(askKeyName(grantId, address), JSON.stringify({ privateKey, sig, diesAt }));
-        key = { account, sig };
+      if (sessions.on) {
+        // Signed in on this browser once a week, for every permission. Nothing pops up after.
+        const held = await sessions.ensure();
         setKeyed(true);
+        askedAt = Date.now();
+        // Signed before being told anything. You cannot learn the answer without leaving
+        // a record that you asked.
+        const askerSig = await held.account.signTypedData({
+          domain: DOMAIN,
+          types: { Request: TYPES.Request },
+          primaryType: "Request",
+          message: { grantId, questionHash, askedAt: BigInt(askedAt), statement: STATEMENTS.request },
+        });
+        signed = { askerSig, session: held.session };
+      } else {
+        let key = heldAskKey(grantId, address, diesAt);
+        if (!key) {
+          // The only wallet popup for this permission.
+          const privateKey = generatePrivateKey();
+          const account = privateKeyToAccount(privateKey);
+          const sig = await signTypedDataAsync({
+            domain: DOMAIN,
+            types: { AskKey: TYPES.AskKey },
+            primaryType: "AskKey",
+            message: { grantId, sessionKey: account.address, diesAt: BigInt(diesAt), statement: STATEMENTS.askKey },
+          });
+          localStorage.setItem(askKeyName(grantId, address), JSON.stringify({ privateKey, sig, diesAt }));
+          key = { account, sig };
+          setKeyed(true);
+        }
+        askedAt = Date.now();
+        const askerSig = await key.account.signTypedData({
+          domain: DOMAIN,
+          types: { Request: TYPES.Request },
+          primaryType: "Request",
+          message: { grantId, questionHash, askedAt: BigInt(askedAt), statement: STATEMENTS.request },
+        });
+        signed = { askerKey: key.account.address, askKeySig: key.sig, askerSig };
       }
-      askedAt = Date.now();
-      // Signed before being told anything. You cannot learn the answer without leaving
-      // a record that you asked.
-      const askerSig = await key.account.signTypedData({
-        domain: DOMAIN,
-        types: { Request: TYPES.Request },
-        primaryType: "Request",
-        message: { grantId, questionHash, askedAt: BigInt(askedAt), statement: STATEMENTS.request },
-      });
-      signed = { askerKey: key.account.address, askKeySig: key.sig, askerSig };
     } catch (e) {
       toast.error(e.shortMessage ?? e.message);
       setBusy(false);
@@ -278,7 +294,10 @@ function Composer({ grantId, onSending, onSent, onFailed }) {
       onSent(id);
     } catch (e) {
       // A key the server would not take is no use. The next question signs a fresh one.
-      if (e.status === 401) {
+      if (sessionRefused(e)) {
+        forgetSession(address);
+        setKeyed(false);
+      } else if (e.status === 401) {
         localStorage.removeItem(askKeyName(grantId, address));
         setKeyed(false);
       }
@@ -317,10 +336,12 @@ function Composer({ grantId, onSending, onSent, onFailed }) {
               ? "That's nearly as long as a question can be."
               : keyed
                 ? "Ask as many as you like. No need to wait for an answer first."
-                : "Your wallet signs once. After that, questions go straight through."}
+                : sessions.on
+                  ? "Your wallet signs you in on this browser once, for a week. Then questions go straight through."
+                  : "Your wallet signs once. After that, questions go straight through."}
         </p>
         <button className="btn btn-primary" onClick={ask} disabled={busy || !text || tooLong || !diesAt}>
-          {busy ? (keyed ? "Sending…" : "Check your wallet…") : keyed ? "Ask" : "Sign and ask"}
+          {busy ? (keyed ? "Sending…" : "Check your wallet…") : keyed ? "Ask" : sessions.on ? "Sign in and ask" : "Sign and ask"}
         </button>
       </div>
     </div>
@@ -348,7 +369,6 @@ function Thread({ grantId }) {
   });
 
   const requests = thread?.requests ?? [];
-  const waiting = requests.filter((r) => r.state === "pending").length;
   const gone = grantErr?.status === 404;
 
   if (isLoading) return <Centered title="Opening…" />;
@@ -369,12 +389,11 @@ function Thread({ grantId }) {
   }
 
   const revoked = grant?.state === "revoked";
-  const expired = Boolean(grant) && grant.diesAt <= now;
+  // A permission lasts for its time and nothing else. "spent" only appears on older ones
+  // that still carried a number of questions, and reads the same as running out.
+  const expired = Boolean(grant) && (grant.diesAt <= now || grant.state === "spent");
   const ended = gone || revoked || expired;
   const inFlight = sending.filter((x) => !requests.some((r) => r.question === x.question && r.askedAt >= x.askedAt - 60_000));
-  // Every question counts, whatever came back, so the thread is the honest count.
-  const used = grant ? Math.max(grant.usesSpent + waiting, requests.length) + inFlight.length : 0;
-  const left = grant ? Math.max(0, grant.usesAllowed - used) : 0;
   const mine = isConnected && grant && address?.toLowerCase() === grant.verifier?.toLowerCase();
   const items = [...inFlight, ...requests];
   const limited = grant?.note && grant.note !== ANY_TOPIC;
@@ -429,10 +448,6 @@ function Thread({ grantId }) {
               This link is for <span className="font-mono text-[0.875rem]">{short(grant.verifier, 6, 4)}</span>, and
               you're connected as <span className="font-mono text-[0.875rem]">{short(address, 6, 4)}</span>. Switch
               accounts in your wallet to ask.
-            </p>
-          ) : left === 0 ? (
-            <p className="p-6 text-[0.9375rem] leading-relaxed text-ink-70">
-              That's the most this permission allows. Answers to anything still open will land below.
             </p>
           ) : (
             <Composer

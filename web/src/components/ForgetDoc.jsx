@@ -1,19 +1,21 @@
 import { Trash2 } from "lucide-react";
 
 import Sheet from "./Sheet.jsx";
+import { useSessions } from "../lib/session.js";
 
 /**
  * Deleting a document, said plainly.
  *
  * A browser confirm() could not tell you that two people are currently allowed to
  * ask about the thing you are about to delete, and that consequence is the whole
- * reason to pause. The wallet signature is the confirmation, so nothing else stands
- * in the way once you have read this.
+ * reason to pause. This sheet is the confirmation: the browser signs the deletion with
+ * the session it already holds, so no wallet popup asks the same thing a second time.
  *
  * It says exactly what happens and no more. The network stops serving the ciphertext
  * and old blocks keep what they have, encrypted, so "gone forever" would be a lie.
  */
 export default function ForgetDoc({ doc, askers = [], onClose, onConfirm, busy }) {
+  const { signedIn } = useSessions();
   return (
     <Sheet
       open={Boolean(doc)}
@@ -23,7 +25,7 @@ export default function ForgetDoc({ doc, askers = [], onClose, onConfirm, busy }
       footer={
         <button className="btn btn-danger btn-lg w-full" onClick={() => onConfirm(doc)} disabled={busy}>
           <Trash2 size={16} strokeWidth={1.75} />
-          {busy ? "Check your wallet…" : "Sign and delete"}
+          {busy ? (signedIn ? "Deleting…" : "Check your wallet…") : signedIn ? "Delete it" : "Sign and delete"}
         </button>
       }
     >

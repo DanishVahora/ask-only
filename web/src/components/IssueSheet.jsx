@@ -1,21 +1,22 @@
 import { useEffect, useState } from "react";
-import { useAccount, useSignTypedData } from "wagmi";
+import { useAccount } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Copy } from "lucide-react";
 import { toast } from "sonner";
 import clsx from "clsx";
 
-import { api, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
+import { api, TYPES, STATEMENTS, short } from "../lib/askonly.js";
 import { ANY_TOPIC, guessTopic } from "../lib/questions.js";
 import { useAnswering } from "../lib/answering.jsx";
+import { useSessions } from "../lib/session.js";
 import Sheet from "./Sheet.jsx";
 import { PassField, Segmented } from "./ui.jsx";
 
 const BLANK = { vaultId: "", verifier: "", verifierName: "", scope: "", life: "d:1", pass: "", key: "" };
 const SCOPE_MAX = 120;
 
-/* The time you give them is the limit that matters. This number only stops a runaway
- * script from spending the owner's enclave credit, so it is high and never mentioned. */
+/* Only for a server from before the count was dropped. A permission lasts for its time
+ * and nothing else; the server rate-limits questions to protect the enclave credit. */
 const QUESTIONS_PER_PERMISSION = 100;
 
 const LIFE_TEXT = { "m:2": "2 minutes", "m:10": "10 minutes", "m:60": "hour", "d:1": "day", "d:7": "week" };
@@ -30,7 +31,7 @@ const LIFE_TEXT = { "m:2": "2 minutes", "m:10": "10 minutes", "m:60": "hour", "d
  */
 export default function IssueSheet({ open, initialVaultId, presetPass, vaults, onClose }) {
   const { address } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
+  const { signedIn, signAndSend } = useSessions();
   const qc = useQueryClient();
   const { unlock, commit, abandon, isUnlocked, hasKey, saveKey } = useAnswering();
 
@@ -90,39 +91,44 @@ export default function IssueSheet({ open, initialVaultId, presetPass, vaults, o
       const sessionKey = await unlock({ vaultId: g.vaultId, label, pass: g.pass });
       opened = true;
       // The server verifies this before it spends its own gas. It can pay for a
-      // permission but cannot author one.
-      const ownerSig = await signTypedDataAsync({
-        domain: DOMAIN,
-        types: { Grant: TYPES.Grant },
-        primaryType: "Grant",
-        message: {
-          vaultId: g.vaultId,
-          verifier,
-          questionSet,
-          question: scope,
-          usesAllowed: BigInt(QUESTIONS_PER_PERMISSION),
-          diesAt: BigInt(diesAt),
-          sessionKey,
-          statement: STATEMENTS.grant,
+      // permission but cannot author one. This browser's session signs it, so there is
+      // no wallet popup unless nothing has been signed here this week.
+      const counted = TYPES.Grant.some((f) => f.name === "usesAllowed"); // an older server
+      const res = await signAndSend(
+        {
+          types: { Grant: TYPES.Grant },
+          primaryType: "Grant",
+          message: {
+            vaultId: g.vaultId,
+            verifier,
+            questionSet,
+            question: scope,
+            ...(counted ? { usesAllowed: BigInt(QUESTIONS_PER_PERMISSION) } : {}),
+            diesAt: BigInt(diesAt),
+            sessionKey,
+            statement: STATEMENTS.grant,
+          },
         },
-      });
-      const res = await api("/api/grant", {
-        body: {
-          vaultId: g.vaultId,
-          owner: address,
-          verifier,
-          verifierName: name,
-          questionSet,
-          question: scope,
-          usesAllowed: QUESTIONS_PER_PERMISSION,
-          diesAt,
-          sessionKey,
-          threshold: "",
-          ownerSig,
-          minutes: unit === "m" ? Number(n) : null,
-          days: unit === "d" ? Number(n) : null,
-        },
-      });
+        ({ sig, session }) =>
+          api("/api/grant", {
+            body: {
+              vaultId: g.vaultId,
+              owner: address,
+              verifier,
+              verifierName: name,
+              questionSet,
+              question: scope,
+              ...(counted ? { usesAllowed: QUESTIONS_PER_PERMISSION } : {}),
+              diesAt,
+              sessionKey,
+              threshold: "",
+              ownerSig: sig,
+              session,
+              minutes: unit === "m" ? Number(n) : null,
+              days: unit === "d" ? Number(n) : null,
+            },
+          }),
+      );
       const kept = await commit(g.vaultId, { until: diesAt });
       opened = false;
       const link = `${location.origin}/ask?grant=${res.grantId}`;
@@ -182,7 +188,7 @@ export default function IssueSheet({ open, initialVaultId, presetPass, vaults, o
       subtitle="They can ask about this document until the time runs out. You won't have to do anything else."
       footer={
         <button className="btn btn-primary btn-lg w-full" onClick={issue} disabled={busy || !ready}>
-          {busy ? "Check your wallet…" : "Sign and get the link"}
+          {busy ? (signedIn ? "Getting the link…" : "Check your wallet…") : signedIn ? "Get the link" : "Sign and get the link"}
         </button>
       }
     >

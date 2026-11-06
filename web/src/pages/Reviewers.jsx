@@ -1,13 +1,14 @@
 import { Fragment, useState } from "react";
-import { useAccount, useSignTypedData } from "wagmi";
+import { useAccount } from "wagmi";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Plus } from "lucide-react";
 import { toast } from "sonner";
 import clsx from "clsx";
 
-import { api, remaining, short, DOMAIN, TYPES, STATEMENTS } from "../lib/askonly.js";
+import { api, remaining, short, TYPES, STATEMENTS } from "../lib/askonly.js";
 import { ANY_TOPIC } from "../lib/questions.js";
 import { grantsQuery, inboxQuery, useAnswering } from "../lib/answering.jsx";
+import { useSessions } from "../lib/session.js";
 import IssueSheet from "../components/IssueSheet.jsx";
 import UnlockSheet from "../components/UnlockSheet.jsx";
 import { PageHead, Perf, Rise, useNow } from "../components/ui.jsx";
@@ -77,7 +78,7 @@ function Stub({ grant, label, waiting, answers, onUnlock, onEnd, ending }) {
             {copied ? "Copied" : "Copy link"}
           </button>
           <button className="link-action link-action-danger" onClick={() => onEnd(grant)} disabled={ending}>
-            {ending ? "Check your wallet…" : "End"}
+            {ending ? "Ending…" : "End"}
           </button>
         </div>
       </div>
@@ -87,7 +88,7 @@ function Stub({ grant, label, waiting, answers, onUnlock, onEnd, ending }) {
 
 export default function Reviewers() {
   const { address, isConnected } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
+  const { signAndSend } = useSessions();
   const qc = useQueryClient();
   const answering = useAnswering();
   const now = useNow(5000);
@@ -116,7 +117,7 @@ export default function Reviewers() {
   const vaults = docs?.vaults ?? [];
   const grants = grantData?.grants ?? [];
   const pending = inbox?.pending ?? [];
-  const isLive = (g) => g.diesAt > now && g.state === "live" && g.usesSpent < g.usesAllowed;
+  const isLive = (g) => g.diesAt > now && g.state === "live";
   const live = grants.filter(isLive);
   const past = grants.filter((g) => !isLive(g));
   const labelOf = (vaultId) => vaults.find((v) => v.vaultId === vaultId)?.label ?? "";
@@ -125,13 +126,10 @@ export default function Reviewers() {
   async function end(grant) {
     setEnding(grant.grantId);
     try {
-      const ownerSig = await signTypedDataAsync({
-        domain: DOMAIN,
-        types: { Revoke: TYPES.Revoke },
-        primaryType: "Revoke",
-        message: { grantId: grant.grantId, statement: STATEMENTS.revoke },
-      });
-      await api("/api/grant/revoke", { body: { grantId: grant.grantId, owner: address, ownerSig } });
+      await signAndSend(
+        { types: { Revoke: TYPES.Revoke }, primaryType: "Revoke", message: { grantId: grant.grantId, statement: STATEMENTS.revoke } },
+        ({ sig, session }) => api("/api/grant/revoke", { body: { grantId: grant.grantId, owner: address, ownerSig: sig, session } }),
+      );
       toast(`${grant.verifierName || "They"} can't ask anything more`);
       qc.invalidateQueries({ queryKey: ["grants", address] });
       qc.invalidateQueries({ queryKey: ["inbox", address] });
@@ -198,7 +196,7 @@ export default function Reviewers() {
                 <span className="w-[16ch] shrink-0 truncate">{g.verifierName || short(g.verifier, 6, 4)}</span>
                 <span className="min-w-0 flex-1 truncate">{labelOf(g.vaultId)}</span>
                 <span className="shrink-0 font-mono text-[0.75rem]">
-                  {g.state === "revoked" ? "ended by you" : g.usesSpent >= g.usesAllowed ? "used up" : "ran out"}
+                  {g.state === "revoked" ? "ended by you" : "ran out"}
                 </span>
               </li>
             ))}

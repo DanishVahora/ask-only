@@ -4,7 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
 
-import { api, encryptDocument } from "../lib/askonly.js";
+import { api, encryptDocument, TYPES, STATEMENTS } from "../lib/askonly.js";
+import { useSessions } from "../lib/session.js";
 import DropDoc from "./DropDoc.jsx";
 import Sheet from "./Sheet.jsx";
 import { PassField, Segmented } from "./ui.jsx";
@@ -20,6 +21,7 @@ const BLANK = { label: "", days: 180, pass: "", text: "" };
  */
 export default function SealSheet({ open, initial, onClose, onSealed }) {
   const { address } = useAccount();
+  const { signAndSend } = useSessions();
   const qc = useQueryClient();
   const [doc, setDoc] = useState(BLANK);
   const [busy, setBusy] = useState(false);
@@ -42,17 +44,24 @@ export default function SealSheet({ open, initial, onClose, onSealed }) {
     setBusy(true);
     try {
       const e = await encryptDocument(doc.text, doc.pass);
-      const res = await api("/api/vault", {
-        body: {
-          owner: address,
-          label: doc.label.trim() || "Untitled",
-          docKind: "document",
-          sha256: e.sha256,
-          iv: e.iv,
-          cipher: e.cipherHex,
-          days: Number(doc.days),
-        },
-      });
+      const label = doc.label.trim() || "Untitled";
+      const body = {
+        owner: address,
+        label,
+        docKind: "document",
+        sha256: e.sha256,
+        iv: e.iv,
+        cipher: e.cipherHex,
+        days: Number(doc.days),
+      };
+      // Signed, so nobody can seal a document under someone else's address. This
+      // browser's session signs it; older servers took it unsigned.
+      const res = TYPES.Seal
+        ? await signAndSend(
+            { types: { Seal: TYPES.Seal }, primaryType: "Seal", message: { sha256: e.sha256, label, statement: STATEMENTS.seal } },
+            ({ sig, session }) => api("/api/vault", { body: { ...body, ownerSig: sig, session } }),
+          )
+        : await api("/api/vault", { body });
       toast.success("Sealed. Only your passphrase opens it");
       await qc.invalidateQueries({ queryKey: ["vaults", address] });
       const pass = doc.pass;
