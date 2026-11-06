@@ -44,11 +44,13 @@ deleted it, you can prove you never held it.** AskOnly is built entirely around 
 **How it works, as two parties with two wallets.** The owner connects a wallet; their address is
 their identity. A document is encrypted in their browser — AES-GCM-256, key derived by PBKDF2 at
 210,000 iterations from a passphrase that never leaves the page — and the ciphertext is written to
-Arkiv as an entity carrying its own death block. The owner signs one EIP-712 **grant**: this reviewer,
-until this time, and this key in my browser may answer them. That is the only decision the owner makes.
-A reviewer connects their own wallet and signs once, letting a key in their browser sign EIP-712
-**requests** under that one permission, so each question lands as `askonly.request state=pending`
-with no further popup. Because only the owner's device holds the passphrase, **only the owner's
+Arkiv as an entity carrying its own death block. Each party's wallet signs one EIP-712 **session** per
+browser, good for a week, naming a key in that browser, and from then on that key signs with no popup.
+The server checks the session against the wallet and the action against the session, and every record
+keeps both signatures. The owner signs one **grant**: this reviewer, until this time, and this key in my
+browser may answer them. That is the only decision the owner makes. The reviewer signs EIP-712
+**requests** under any permission they hold, so each question lands as `askonly.request state=pending`
+with no popup. Because only the owner's device holds the passphrase, **only the owner's
 browser can answer**, and it does so by itself: it decrypts locally, sends the fewest lines that can settle
 the question to a `glm-5.3` enclave on 0G Private Compute, widens only if those cannot, and signs the
 answer back with the key the grant named. The reviewer never holds a key, a passphrase or a document. The server pays Arkiv gas and does nothing

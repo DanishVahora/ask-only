@@ -14,8 +14,8 @@ ETHGlobal Mumbai 2026 · From Scratch · MIT
 Your landlord wants to know you earn enough. He does not need your payslip, your PAN, your bank
 account or your address. He needs one word. You put the document into AskOnly; it is read and
 encrypted **in your browser** and the ciphertext goes to Arkiv carrying its own death block. You add
-the landlord as a reviewer: his wallet, and for how long. That one signature is the only decision you
-make. He asks whatever he likes in his own words, and **your browser answers by itself**, because only
+the landlord as a reviewer: his wallet, and for how long. That is the only decision you make, and your
+wallet asks you to sign at most once a week on this browser. He asks whatever he likes in his own words, and **your browser answers by itself**, because only
 your device can open the document. It decrypts locally, sends the fewest lines that can answer to a
 model inside an Intel TDX enclave, and signs the result with a key your signature named. He gets
 **Yes**. When the time is up, Arkiv stops returning the permission and every operation on it fails.

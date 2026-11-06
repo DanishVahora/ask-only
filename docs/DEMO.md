@@ -18,7 +18,7 @@ the owner's tab stays open and answering while you drive the landlord's.
 Have ready:
 1. `http://localhost:5173/` on the landing page
 2. A short payslip as a text file or PDF
-3. Your 0G key saved once beforehand, so its field doesn't appear on camera
+3. `ZEROG_API_KEY` set in `.env`. The app answers with it and never asks for a key on camera
 
 Try the whole thing once first. The first enclave call of a session can be slower, and 0G sometimes
 says it is briefly overloaded. The app waits that out by itself, but it is dull to film.
@@ -35,7 +35,8 @@ Landing page, scroll once, press **Seal a document**.
 
 ## 0:20 Seal it (25s)
 
-Connect Account 1. Drop the payslip. Name it, type a passphrase, press **Encrypt and seal**.
+Connect Account 1. Drop the payslip. Name it, type a passphrase, press **Encrypt and seal**. The
+wallet asks once, to sign this browser in for the week. That is the last popup on this side.
 
 > "It's read and encrypted here in my browser. What leaves is ciphertext, and it carries its own
 > expiry on Arkiv."
@@ -43,9 +44,10 @@ Connect Account 1. Drop the payslip. Name it, type a passphrase, press **Encrypt
 ## 0:45 Add a reviewer (25s)
 
 The next step opens by itself. Paste the landlord's address, call them Landlord, pick **2 minutes**,
-press **Sign and get the link**. One wallet popup.
+press **Get the link**. No popup this time: the browser is already signed in.
 
-> "This is the only decision I make. Who, and for how long. One signature."
+> "This is the only decision I make. Who, and for how long. My wallet signed in once, for the week,
+> and my browser signs the rest."
 
 Copy the link. Press **Done**.
 
@@ -59,7 +61,7 @@ In the second profile, Account 2, open the link. Send these one after another wi
 2. **Are they still employed there?**
 3. **What is their PAN number?**
 
-> "His wallet signed once, for this permission. Every question since is signed in his browser
+> "His wallet signed once, to sign his browser in for the week. Every question since is signed in his browser
 > before he's told anything, so there's a record that he asked. I'm not touching my wallet either."
 
 Answers land: **Yes**, comfortably above. **Yes**. The third comes back **Unknown** or **No**, with no
