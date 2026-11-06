@@ -1,4 +1,4 @@
-import { guessTopic, selectLines } from "../../lib/questions.js";
+import { ANY_TOPIC, extractStages, guessTopic, selectLines } from "../../lib/questions.js";
 
 /* A sample payslip under a made-up name. Both the hero and the scroll story use it. */
 export const LINES = [
@@ -30,6 +30,18 @@ const TEXT = LINES.join("\n");
 export function linesFor(question) {
   const { suggested } = selectLines(TEXT, question, guessTopic(question));
   return new Set(suggested.length ? suggested : LINES.map((_, i) => i));
+}
+
+/**
+ * Each line the enclave reads, as the enclave reads it: the app's own first extract, so
+ * an identifier comes through as "[withheld]" here exactly as it does there. The page
+ * must never show the enclave reading a value it is not given.
+ */
+export function readFor(question) {
+  const keep = [...linesFor(question)].sort((a, b) => a - b);
+  const first = extractStages(TEXT, question, ANY_TOPIC)[0];
+  const shown = first ? first.extract.split(/\r?\n/).slice(1) : [];
+  return new Map(keep.map((i, k) => [i, shown.length === keep.length ? shown[k] : LINES[i]]));
 }
 
 const CIPHER = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz0123456789+/";

@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useInView, useReducedMotion } from "motion/react";
 import { ArrowUp, Lock } from "lucide-react";
 import clsx from "clsx";
 
-import { LINES, linesFor } from "./payslip.js";
+import { LINES, linesFor, readFor } from "./payslip.js";
 
 /*
  * Answers that are true of the sample payslip. The lines come from the real picker on
@@ -116,6 +116,8 @@ function Demo() {
   };
 
   const count = run?.keep.size ?? 0;
+  // What the enclave is actually given for each line it reads, identifiers masked.
+  const shown = useMemo(() => (run ? readFor(run.q) : null), [run]);
   const status = !run
     ? `Sample · ${TOTAL} lines`
     : stage === 1
@@ -150,7 +152,7 @@ function Demo() {
             >
               <span className="pp-text">
                 <i className="pp-mark" />
-                <b>{t}</b>
+                <b>{run && stage >= 1 && run.keep.has(i) ? (shown?.get(i) ?? t) : t}</b>
                 <i className="pp-bar" />
               </span>
             </li>
