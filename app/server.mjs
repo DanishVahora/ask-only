@@ -32,8 +32,13 @@ import { clients, account, readOnly, preflight, scrub, FAUCET } from "../src/ark
 import {
   putVault, issueGrant, liveGrant, grantsOf, vaultsOf, vaultCipher,
   recordAccess, recordRefusal, accessesOf, refusalsOf, spendGrant, extendGrant, revokeGrant,
+  openRequest, decideRequest, pendingFor, requestById, accessById,
 } from "../src/arkiv/ledger.mjs";
 import { watchExtensions } from "../src/arkiv/watch.mjs";
+import {
+  GrantTypes, RequestTypes, AnswerTypes, grantMessage, requestMessage, answerMessage,
+  requireSignature, SignatureError, clientSpec,
+} from "../src/auth/typed.mjs";
 import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
 import { QUESTION_SETS, canonicalQuestion, minimalExtract, systemPrompt, userPrompt, sha256hex } from "../src/ask/questions.mjs";
 import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVIDER, MIN_MAX_TOKENS, baseUrl } from "../src/ask/enclave.mjs";
@@ -170,6 +175,21 @@ const hexToBytes = (hex) => {
 /* ------------------------------------------------------------------ routes */
 
 const routes = {
+  /** Everything a browser needs to produce a signature the server will accept. */
+  "GET /api/spec": async (req, res) => {
+    json(res, 200, {
+      ...clientSpec,
+      // Stated plainly because it is the honest part: we pay, we cannot author.
+      paymaster: {
+        address: acct?.address ?? null,
+        note:
+          "This server pays the Arkiv gas for every write. It verifies an EIP-712 " +
+          "signature from the claimed party before writing, so it can pay for a " +
+          "record but cannot author one.",
+      },
+    });
+  },
+
   "GET /api/mode": async (req, res) => {
     const local = isLocalHost(req);
     json(res, 200, {
@@ -327,10 +347,28 @@ const routes = {
     if (!ctx) return json(res, 503, { error: bootError });
     try {
       const b = await readBody(req);
-      if (!QUESTION_SETS[b.questionSet]) return json(res, 400, { error: `unknown question set` });
+      if (!QUESTION_SETS[b.questionSet]) return json(res, 400, { error: "unknown question set" });
+
+      // The owner signed these exact terms. Verify before spending our gas on
+      // them - this is what makes the paymaster arrangement honest.
+      const owner = await requireSignature({
+        address: b.owner,
+        types: GrantTypes,
+        primaryType: "Grant",
+        message: grantMessage({
+          vaultId: b.vaultId,
+          verifier: b.verifier,
+          questionSet: b.questionSet,
+          question: b.question,
+          usesAllowed: b.usesAllowed ?? 3,
+          diesAt: b.diesAt,
+        }),
+        signature: b.ownerSig,
+      });
+
       const out = await issueGrant(ctx, {
         vaultId: b.vaultId,
-        owner: b.owner ?? acct.address,
+        owner,
         verifier: b.verifier,
         verifierName: b.verifierName ?? "",
         questionSet: b.questionSet,
@@ -338,11 +376,181 @@ const routes = {
         minutes: b.minutes ? Number(b.minutes) : null,
         days: b.days ? Number(b.days) : 7,
         threshold: String(b.threshold ?? ""),
-        note: b.note ?? "",
+        note: b.question ?? "",
         labelId: 0n,
+        ownerSig: hexToBytes(b.ownerSig),
       });
       json(res, 200, out);
     } catch (e) {
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /* -------------------------------------------------- the second party ---
+     A verifier cannot answer, only ask. This writes a pending request into
+     the owner's inbox, signed by the asker before they are told anything. */
+  "POST /api/request": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      const grant = await liveGrant(ctx.reader, b.grantId);
+      if (!grant) {
+        return json(res, 404, {
+          error: "that permission no longer exists",
+          expired: true,
+          explain: "Past its death block Arkiv stops returning the entity and every operation fails.",
+        });
+      }
+
+      const asker = await requireSignature({
+        address: b.asker,
+        types: RequestTypes,
+        primaryType: "Request",
+        message: requestMessage({
+          grantId: b.grantId,
+          questionHash: b.questionHash,
+          askedAt: b.askedAt,
+        }),
+        signature: b.askerSig,
+      });
+
+      // The grant names who may ask. A signature from anyone else is refused.
+      if (asker.toLowerCase() !== String(grant.verifier).toLowerCase()) {
+        return json(res, 403, {
+          error: `this permission was issued to ${grant.verifier}, not to ${asker}`,
+        });
+      }
+      if (grant.usesSpent >= grant.usesAllowed) {
+        return json(res, 403, { error: "this permission has no uses left" });
+      }
+
+      const out = await openRequest(ctx, {
+        grantId: grant.grantId,
+        vaultId: grant.vaultId,
+        owner: grant.owner,
+        asker,
+        askerName: grant.verifierName,
+        questionSet: grant.questionSet,
+        question: grant.note,
+        questionHash: b.questionHash,
+        askerSig: hexToBytes(b.askerSig),
+        days: 7,
+      });
+      json(res, 200, { ...out, state: "pending", owner: grant.owner });
+    } catch (e) {
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /** The owner's inbox. What is waiting on them, right now. */
+  "GET /api/inbox": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const owner = url.searchParams.get("owner");
+    if (!owner) return json(res, 400, { error: "owner is required" });
+    try {
+      json(res, 200, { owner, pending: await pendingFor(ctx.reader, owner) });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /** What the verifier polls while they wait. */
+  "GET /api/request": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    try {
+      const r = await requestById(ctx.reader, id);
+      if (!r) return json(res, 404, { error: "that request is gone", expired: true });
+      const payload = { ...r };
+      if (r.state === "answered" && r.accessId) {
+        payload.receipt = await accessById(ctx.reader, r.accessId);
+      }
+      json(res, 200, payload);
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /**
+   * The owner's device answers. It decrypted locally, called the enclave and
+   * signed the result - so this endpoint never sees a passphrase, a key or a
+   * plaintext, only a signed answer it can verify and pay to record.
+   */
+  "POST /api/answer": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      const request = await requestById(ctx.reader, b.requestId);
+      if (!request) return json(res, 404, { error: "that request is gone", expired: true });
+      if (request.state !== "pending") {
+        return json(res, 409, { error: `that request is already ${request.state}` });
+      }
+
+      const owner = await requireSignature({
+        address: b.owner,
+        types: AnswerTypes,
+        primaryType: "Answer",
+        message: answerMessage({
+          requestId: b.requestId,
+          grantId: request.grantId,
+          questionHash: request.questionHash,
+          answerHash: b.answerHash,
+          enclaveRequestId: b.enclaveRequestId,
+        }),
+        signature: b.ownerSig,
+      });
+      if (owner.toLowerCase() !== String(request.owner).toLowerCase()) {
+        return json(res, 403, { error: "only the owner of the document may answer" });
+      }
+
+      if (b.decision === "refused") {
+        await decideRequest(ctx, request.entityKey, { state: "refused" });
+        await recordRefusal(ctx, {
+          grantId: request.grantId,
+          owner,
+          asker: request.asker,
+          question: request.question,
+          questionHash: request.questionHash,
+          reason: "owner-declined",
+          detail: "The owner saw the request and declined it.",
+        }).catch(() => {});
+        return json(res, 200, { state: "refused" });
+      }
+
+      const grant = await liveGrant(ctx.reader, request.grantId);
+      const access = await recordAccess(ctx, {
+        grantId: request.grantId,
+        vaultId: request.vaultId,
+        owner,
+        asker: request.asker,
+        askerName: request.askerName ?? "",
+        question: request.question,
+        questionHash: request.questionHash,
+        answer: b.answer,
+        answerHash: b.answerHash,
+        band: b.band ?? "",
+        requestId: b.enclaveRequestId ?? "",
+        provider: b.provider ?? "0x0000000000000000000000000000000000000000",
+        model: b.model ?? "glm-5.3",
+        trustMode: "private",
+        verification: b.verification ?? "provider-address",
+        teeType: b.teeType ?? "",
+        latencyMs: b.latencyMs ?? 0,
+        askerSig: hexToBytes(b.ownerSig),
+      });
+      await decideRequest(ctx, request.entityKey, { state: "answered", accessId: access.accessId });
+      if (grant) {
+        await spendGrant(ctx, grant.entityKey, {
+          usesSpent: grant.usesSpent,
+          usesAllowed: grant.usesAllowed,
+        }).catch(() => {});
+      }
+      json(res, 200, { state: "answered", ...access });
+    } catch (e) {
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
       json(res, 502, { error: scrub(e) });
     }
   },

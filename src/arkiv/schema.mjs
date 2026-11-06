@@ -139,6 +139,39 @@ export const Refusal = defineSchema("askonly.refusal", {
   detail: str(),
 });
 
+/* ---------------------------------------------------------------------------
+   5. REQUEST - the second party, made real.
+
+   This entity is why AskOnly is a protocol rather than a demo. Only the owner's
+   device holds the passphrase, so only the owner's device can decrypt and ask
+   the enclave. The verifier therefore cannot produce an answer - they can only
+   REQUEST one, and wait.
+
+   So a request lands here as `pending`, the owner's device sees it, and the
+   answer is written by the owner. The verifier never holds a key, a passphrase,
+   or a document. This is the shape a DPDP consent manager has, and it is the
+   shape the cryptography forces.
+   ------------------------------------------------------------------------ */
+export const Request = defineSchema("askonly.request", {
+  requestId: str().indexed(),
+  grantId: str().indexed(),
+  vaultId: str().indexed(),
+  owner: addr().indexed(), // whose inbox this lands in
+  asker: addr().indexed(),
+  askerName: str().indexed(),
+  questionSet: str().indexed(),
+  questionHash: str().indexed(),
+  // pending | answered | refused | withdrawn. A positive enum, because the
+  // network has no NOT and "not yet answered" is otherwise inexpressible.
+  state: str().indexed(),
+  askedAt: u64().indexed(),
+  decidedAt: u64().indexed(), // 0 until decided
+  accessId: str().indexed(), // the receipt, once answered
+
+  question: str(),
+  askerSig: bytes(), // EIP-712 - the verifier signed BEFORE being told anything
+});
+
 /** Question sets -> ENSv2 EAC role bits.
  *
  *  A nybble in EnhancedAccessControl is a BOOLEAN, not a 0-15 level: every bitmap
@@ -185,4 +218,4 @@ export const isLegalRoleBitmap = (bits) => (BigInt(bits) & ~ALL_ROLES) === 0n;
 /** The admin counterpart of a role is the role shifted by 128. */
 export const adminOf = (roleBit) => BigInt(roleBit) << 128n;
 
-export const SCHEMAS = { Vault, Grant, Access, Refusal };
+export const SCHEMAS = { Vault, Grant, Access, Refusal, Request };

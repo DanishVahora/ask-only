@@ -19,7 +19,7 @@ import { hexToBytes } from "viem";
  *   Column "owner": a addr column, but the value is a str.
  * Tagging everything - not just the ambiguous ones - keeps that class of bug
  * impossible rather than merely unlikely. */
-import { Vault, Grant, Access, Refusal, fitStr, QUESTION_SETS } from "./schema.mjs";
+import { Vault, Grant, Access, Refusal, Request, fitStr, QUESTION_SETS } from "./schema.mjs";
 import { guardedWrite, expiry, scrub, safeError, txLink } from "./client.mjs";
 
 const PAGE = 100; // MAX_LIMIT
@@ -233,6 +233,152 @@ export async function recordRefusal(ctx, r) {
     { label: "recordRefusal" },
   );
   return { refusalId, entityKey: res.entityKey, txHash: res.txHash, tx: txLink(res.txHash) };
+}
+
+/* ------------------------------------------------------------------ requests
+   The verifier cannot answer - only ask. A request lands in the owner's inbox
+   as `pending` and waits for the owner's device, which is the only thing that
+   holds the passphrase.
+   -------------------------------------------------------------------------- */
+
+export async function openRequest(ctx, r) {
+  const requestId = `q-${crypto.randomUUID().slice(0, 8)}`;
+  const res = await guardedWrite(
+    ctx,
+    ({ gas }) =>
+      ctx.wallet.createEntity(
+        Request,
+        {
+          requestId: str(requestId),
+          grantId: str(r.grantId),
+          vaultId: str(r.vaultId),
+          owner: addr(r.owner),
+          asker: addr(r.asker),
+          askerName: str(fitStr(r.askerName ?? "")),
+          questionSet: str(r.questionSet),
+          questionHash: str(fitStr(r.questionHash)),
+          state: str("pending"),
+          askedAt: u64(now()),
+          decidedAt: u64(0n),
+          accessId: str(""),
+          question: str(fitStr(r.question)),
+          askerSig: bytes(r.askerSig ?? new Uint8Array()),
+        },
+        // A request must not outlive the permission it is made under.
+        { expiration: r.minutes ? expiry.minutes(r.minutes) : expiry.days(r.days ?? 7) },
+        { gas },
+      ),
+    { label: "openRequest" },
+  );
+  return { requestId, entityKey: res.entityKey, txHash: res.txHash, tx: txLink(res.txHash) };
+}
+
+export async function decideRequest(ctx, entityKey, { state, accessId = "" }) {
+  await guardedWrite(
+    ctx,
+    ({ gas }) =>
+      ctx.wallet.patchEntity(
+        Request,
+        entityKey,
+        { set: { state: str(state), decidedAt: u64(now()), accessId: str(fitStr(accessId)) } },
+        { gas },
+      ),
+    { label: "decideRequest" },
+  );
+  return { state };
+}
+
+/** The owner's inbox: what is waiting on them right now. */
+export async function pendingFor(reader, owner, limit = 25) {
+  const { entities } = await reader
+    .select({
+      $key: true, requestId: true, grantId: true, vaultId: true, asker: true, askerName: true,
+      questionSet: true, question: true, questionHash: true, askedAt: true, state: true,
+    })
+    .from(Request)
+    .where(and(eq("owner", addr(owner)), eq("state", str("pending"))))
+    .orderBy(desc("askedAt"))
+    .limit(Math.min(limit, PAGE))
+    .fetch();
+  return entities.map((e) => ({
+    entityKey: e.$key,
+    requestId: val(e, "requestId"),
+    grantId: val(e, "grantId"),
+    vaultId: val(e, "vaultId"),
+    asker: val(e, "asker"),
+    askerName: val(e, "askerName"),
+    questionSet: val(e, "questionSet"),
+    question: val(e, "question"),
+    questionHash: val(e, "questionHash"),
+    askedAt: Number(val(e, "askedAt")),
+    state: val(e, "state"),
+  }));
+}
+
+/** What the verifier is waiting on. Returns null once the request has expired,
+ *  which is the same signal as everywhere else: gone means gone. */
+export async function requestById(reader, requestId) {
+  const { entities } = await reader
+    .select({
+      $key: true, requestId: true, grantId: true, vaultId: true, owner: true, asker: true,
+      questionSet: true, question: true, questionHash: true, state: true, askedAt: true,
+      decidedAt: true, accessId: true,
+    })
+    .from(Request)
+    .where(eq("requestId", str(requestId)))
+    .limit(1)
+    .fetch();
+  const e = entities[0];
+  if (!e) return null;
+  return {
+    entityKey: e.$key,
+    requestId: val(e, "requestId"),
+    grantId: val(e, "grantId"),
+    vaultId: val(e, "vaultId"),
+    owner: val(e, "owner"),
+    asker: val(e, "asker"),
+    questionSet: val(e, "questionSet"),
+    question: val(e, "question"),
+    questionHash: val(e, "questionHash"),
+    state: val(e, "state"),
+    askedAt: Number(val(e, "askedAt")),
+    decidedAt: Number(val(e, "decidedAt")),
+    accessId: val(e, "accessId"),
+  };
+}
+
+/** One receipt, by id - what the verifier reads once the owner has answered. */
+export async function accessById(reader, accessId) {
+  const { entities } = await reader
+    .select({
+      $key: true, accessId: true, grantId: true, answer: true, band: true, question: true,
+      questionHash: true, answerHash: true, requestId: true, provider: true, model: true,
+      trustMode: true, verification: true, teeType: true, latencyMs: true, at: true,
+    })
+    .from(Access)
+    .where(eq("accessId", str(accessId)))
+    .limit(1)
+    .fetch();
+  const e = entities[0];
+  if (!e) return null;
+  return {
+    entityKey: e.$key,
+    accessId: val(e, "accessId"),
+    grantId: val(e, "grantId"),
+    answer: val(e, "answer"),
+    band: val(e, "band"),
+    question: val(e, "question"),
+    questionHash: val(e, "questionHash"),
+    answerHash: val(e, "answerHash"),
+    requestId: val(e, "requestId"),
+    provider: val(e, "provider"),
+    model: val(e, "model"),
+    trustMode: val(e, "trustMode"),
+    verification: val(e, "verification"),
+    teeType: val(e, "teeType"),
+    latencyMs: Number(val(e, "latencyMs")),
+    at: Number(val(e, "at")),
+  };
 }
 
 /* ============================================================ READS ===== */
