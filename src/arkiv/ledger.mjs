@@ -136,6 +136,26 @@ export async function extendGrant(ctx, entityKey, { days = null, minutes = null 
     ({ gas }) => ctx.wallet.extendEntity({ entityKey, expiration }, { gas }),
     { label: "extendGrant" },
   );
+
+  // `extendEntity` moves $expiresAt, which is the only expiry that matters to the
+  // network - but it does NOT touch our `diesAt` millisecond mirror, which is what
+  // the countdown in the UI reads. Left alone, an extended permission renders as
+  // "expired" while the network still happily returns it. Keep the mirror honest.
+  const lifeMs = minutes ? minutes * 60_000 : (days ?? 7) * 86_400_000;
+  try {
+    await guardedWrite(
+      ctx,
+      ({ gas }) =>
+        ctx.wallet.patchEntity(Grant, entityKey, { set: { diesAt: u64(now() + BigInt(lifeMs)) } }, { gas }),
+      { label: "extendGrant:mirror" },
+    );
+  } catch (e) {
+    // The extension itself succeeded, so report rather than fail the whole call.
+    return {
+      txHash: res.txHash, tx: txLink(res.txHash), expiresAt: res.expiresAt?.toString(),
+      mirrorWarning: scrub(e),
+    };
+  }
   return { txHash: res.txHash, tx: txLink(res.txHash), expiresAt: res.expiresAt?.toString() };
 }
 

@@ -2,9 +2,195 @@
 
 **Answer the question. Never send the file.**
 
-A consent layer where a verifier never receives your document — only a signed answer to
-one permitted question — and where the permission is destroyed by the network, not by a promise.
+A consent layer where a verifier never receives your document — only a signed answer to one
+permitted question — and where the permission is destroyed by the network rather than by a
+promise.
 
-ETHGlobal Mumbai 2026 · From Scratch
+ETHGlobal Mumbai 2026 · From Scratch · MIT
 
-> Work in progress. Scaffolded 6 Nov 2026.
+---
+
+## The idea in one paragraph
+
+Your landlord wants to know you earn enough. He does not need your payslip, your PAN, your bank
+account or your address — he needs one bit. You put the document into AskOnly; it encrypts in
+your browser and the ciphertext goes to Arkiv carrying its own death block. You grant the
+landlord a **capability**: one question set, N uses, an expiry. He asks *"is monthly income above
+₹50,000?"* and gets **YES** from a model running inside an Intel TDX enclave — along with a
+receipt he has to sign to see. He asks anything else and it is refused before it reaches your
+document. When the grant expires, Arkiv stops returning it and every operation on it fails.
+
+**Why bother:** you cannot prove you deleted data. Broadbent & Islam (TCC 2020) proved certified
+deletion is impossible with classical information. So deletion is the wrong primitive.
+Non-collection is the right one — *you can never prove you deleted it; you can prove you never
+held it.*
+
+---
+
+## A query you can run
+
+Reads cost no gas on Arkiv, so this needs **no funded wallet and no private key** — just a free
+access key (about 30 seconds at <https://hub.arkiv.network/access-keys>).
+
+```bash
+npm install
+ARKIV_ACCESS_KEY=ark_live_... node scripts/judge-query.mjs
+```
+
+```
+Arkiv Rabdi · chain 7794095 · block 286578
+writing wallet 0x4CA8176777D44B76235684b63334088C618994e4
+
+1 capability(ies) still returned by the network:
+  g-d72b543d  landlord.eth   income      live     0/1 used  dies@block 588998
+
+1 receipt(s) — these outlive the permission on purpose:
+  landlord.eth asked "Is monthly income above INR 50000?"
+    -> YES  req f88d4a75-646f-42be-bf04-38532c51422c
+    -> enclave 0xD179F4526064846dE9a9E9D93683AF75CB72E503  verified by: provider-address
+
+1 refusal(s) — questions somebody was not permitted to ask:
+  "What is their exact salary?"  refused: out-of-set
+```
+
+**Look at what is missing.** Several capabilities were issued while building this. Only the ones
+that have not passed their death block come back. An expired entity is not flagged, tombstoned
+or soft-deleted — the network simply stops returning it. *That absence is the product.*
+
+Run it again in a few minutes and short-lived grants will have vanished on their own.
+
+**Writing wallet:** `0x4CA8176777D44B76235684b63334088C618994e4`
+
+---
+
+## Run the whole thing
+
+```bash
+npm install
+cp .env.example .env     # ARKIV_ACCESS_KEY, DEPLOYER_PRIVATE_KEY, SEPOLIA_RPC_URL
+
+npm run preflight        # proves Arkiv, ENSv2 and the 0G enclave are all live
+npm run compile && npm test       # 19 contract tests
+npm start                # http://localhost:5173
+```
+
+> **Port 5173 is not arbitrary.** 0G's router allowlists browser origins by *exact origin,
+> including port*. `http://localhost:5173` gets `Access-Control-Allow-Origin` back;
+> `localhost:4319`, `:5174`, `:8080`, `:8000`, `:4200` all get **403**. On any other port the
+> browser cannot reach the enclave and the app silently falls back to relaying through the
+> server — which reintroduces exactly the trusted middleman this design exists to remove.
+
+Proof scripts, each of which measures rather than asserts:
+
+| Command | What it proves |
+|---|---|
+| `node --env-file=.env scripts/arkiv-prove.mjs` | writes a vault, grant, receipt and refusal; measures the event firehose |
+| `node --env-file=.env scripts/arkiv-expiry.mjs <grantId>` | watches a permission die and shows every operation on it fail |
+| `node --env-file=.env scripts/arkiv-retention.mjs` | proves extension is loud and death is silent |
+| `node --env-file=.env scripts/ask-prove.mjs` | the enclave path, minimisation, and the fail-closed cases |
+| `node --env-file=.env scripts/ens-demo.mjs` | refuse → grant → succeed → revoke, on Sepolia |
+
+---
+
+## Architecture
+
+```
+   OWNER'S MACHINE (localhost:5173)              VERIFIER
+   browser: AES-GCM-256, holds doc key           browser: connects wallet
+        │ ciphertext        │ extract                 │ asks the one question
+        ▼                   ▼                         ▼
+   ┌──────────┐     ┌────────────────┐      ┌────────────────────────┐
+   │  ARKIV   │     │ 0G PRIVATE CPU │      │ ENSv2 ETHRegistry      │
+   │ (Rabdi)  │     │ glm-5.3 TeeML  │      │ 0xd4ebcb…a8b4 Sepolia  │
+   │          │     │ Intel TDX      │      │ hasRoles(uint256,…)    │
+   │ vault    │     │ trust=private  │      └───────────┬────────────┘
+   │ grant ←── $expiresAt IS the permission              │ role = question set
+   │ access   │     └────────┬───────┘                   ▼
+   │ refusal  │              │ yes/no + requestId   ┌──────────────────┐
+   └──────────┘              └────────────────────► │ AskOnlyGate.sol  │
+                                                    └──────────────────┘
+```
+
+| Layer | Role | Why nothing else does it |
+|---|---|---|
+| **Arkiv** | the capability, and the document | expiry is *enforced by the network*; extension emits an event, death emits nothing |
+| **0G PC** | the only reader | a model in a TDX enclave is the only adapter from unsigned, unstructured paper to one bit |
+| **ENSv2** | who may ask what | the question set *is* an on-chain role bitmap; revoking is revoking a role |
+
+Deployed on Sepolia, verified by reading the constructor values back:
+
+| Contract | Address |
+|---|---|
+| `AskOnlyGate` (production, reads canonical ENSv2) | [`0xc0Aa8494d24EB40878cE9B3505Fe3023C75CF204`](https://sepolia.etherscan.io/address/0xc0Aa8494d24EB40878cE9B3505Fe3023C75CF204) |
+| `MockENSRegistry` (writable demo registry) | [`0x782E197F213c7eb04D578459a3b42bE861aC2E88`](https://sepolia.etherscan.io/address/0x782E197F213c7eb04D578459a3b42bE861aC2E88) |
+| `AskOnlyGateDemo` | [`0xEd17815fF920bc13A160ec504f9ef710B1E6ef14`](https://sepolia.etherscan.io/address/0xEd17815fF920bc13A160ec504f9ef710B1E6ef14) |
+
+Addresses live in `deployments.sepolia.json`; **nothing is hard-coded in the UI.**
+
+---
+
+## Arkiv track
+
+The four graded documents, plus the schema:
+
+- [`arkiv/why-arkiv.md`](arkiv/why-arkiv.md) — why this is impossible on anything else
+- [`arkiv/how-you-use-arkiv.md`](arkiv/how-you-use-arkiv.md) — the four entities and six queries
+- [`arkiv/friction.md`](arkiv/friction.md) — everything that was rough, measured
+- [`arkiv/reach.md`](arkiv/reach.md) — who this is for and what has to be true
+- [`arkiv/schema.md`](arkiv/schema.md) — every attribute and the limits it is built against
+
+The headline measurement, from `scripts/arkiv-expiry.mjs`:
+
+```
+block 283073  QUERYABLE   2 blocks to live
+block 283075  GONE        past death block
+  ok read it by id    failed: not returned by any query
+  ok patch its state  failed: reverted. Reason: no entity 0x32b3d3c1…0ecde5 —
+                      it may have been deleted, or have expired
+  belonging to THIS permission : 0
+  No extension event was emitted for this permission. It was allowed to die.
+```
+
+---
+
+## What we don't claim
+
+A privacy project that overstates is worse than one that does less.
+
+- **We do not erase bytes from history.** Arkiv's docs do not claim it, so neither do we. Expiry
+  means queries stop returning the entity and operations fail. The document is AES-GCM-256
+  ciphertext encrypted in the owner's browser; that is what protects historical bytes.
+- **The enclave does not enforce our policy.** 0G Private Compute is an inference router, not a
+  place to deploy code. Enforcement is at the client and the verifier, and we say so out loud.
+- **0G does not sign the answer.** We intended to verify an enclave signature against the
+  provider's on-chain signer. `GET /v1/proxy/signature/{chatID}` does not exist on the Router —
+  eight path shapes probed with a live `chatcmpl` id, all 404. So a receipt's `verification`
+  field says `provider-address`, never `signature`, and the enclave's identity is established by
+  address against the live provider list. `x_0g_trace.tee_verified` would be the router's
+  self-report and is labelled as such wherever shown.
+- **Expiry kills the capability, not knowledge.** A landlord told "yes" still knows "yes". We
+  shrink what is disclosed to one bit and make every bit accountable. Nothing makes knowledge
+  revocable.
+- **The TEE boundary is real but not absolute.** You are trusting Intel TDX, the dstack image
+  and 0G's gateway. TEE.fail (October 2025) happened.
+- **We are not a registered Consent Manager** and cannot be — the DPDP Rules First Schedule
+  Part A item 4 requires ₹2 crore net worth. AskOnly is the reference implementation a
+  registrant would run.
+- **The demo's writable ENS registry is a mock**, because roles cannot be granted on a name we
+  do not control. It replicates the real `ALL_ROLES` validation and root-OR semantics, and the
+  production gate deployed alongside it reads the canonical ETHRegistry. Both are labelled
+  everywhere.
+- **The hosted demo is a trusted operator.** 0G's CORS allowlist rejects deployed origins, so a
+  hosted instance must relay with its own key and can see the extract. It says so in a permanent
+  banner, and `/api/ask/relay` refuses to run on localhost so the honest path cannot be
+  bypassed.
+
+---
+
+## AI use
+
+Disclosed in full in [`AI-DISCLOSURE.md`](AI-DISCLOSURE.md).
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
