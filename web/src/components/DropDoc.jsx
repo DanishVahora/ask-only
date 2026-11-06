@@ -55,8 +55,8 @@ export default function DropDoc({ onText, disabled }) {
         tabIndex={0}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
         className={clsx(
-          "cursor-pointer rounded-[12px] border border-dashed px-4 py-6 text-center transition-colors",
-          over ? "border-seal bg-seal-wash" : "border-line-2 bg-paper hover:border-ink-50",
+          "cursor-pointer rounded-[14px] border border-dashed px-4 py-7 text-center transition-colors",
+          over ? "border-seal bg-seal-wash" : "border-line-2 bg-paper hover:border-ink-30",
           busy && "cursor-wait",
         )}
       >
@@ -74,11 +74,9 @@ export default function DropDoc({ onText, disabled }) {
           </p>
         ) : (
           <>
-            <Upload size={18} className="mx-auto mb-2 text-ink-30" />
-            <p className="text-[0.875rem] font-medium">Drop a PDF, a photo, or a text file</p>
-            <p className="mt-1 text-[0.75rem] text-ink-50">
-              Read in this tab. The file itself is never uploaded.
-            </p>
+            <Upload size={18} strokeWidth={1.75} className="mx-auto mb-2 text-ink-50" />
+            <p className="text-[0.875rem] font-medium">Drop a PDF, a photo or a text file</p>
+            <p className="mt-1 text-[0.75rem] text-ink-50">Or click to choose one</p>
           </>
         )}
       </div>
@@ -91,7 +89,7 @@ export default function DropDoc({ onText, disabled }) {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="mt-2 flex items-start gap-2.5 rounded-[10px] border border-seal bg-seal-wash px-3.5 py-3">
+            <div className="mt-2 flex items-start gap-2.5 rounded-[10px] bg-seal-wash px-3.5 py-3">
               <Icon size={15} className="mt-0.5 shrink-0 text-seal" />
               <div className="min-w-0">
                 <p className="truncate text-[0.8125rem] font-medium">{note.name}</p>
@@ -104,7 +102,7 @@ export default function DropDoc({ onText, disabled }) {
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-2 rounded-[10px] border border-clay bg-clay-wash px-3.5 py-3 text-[0.8125rem] leading-snug"
+            className="mt-2 rounded-[10px] bg-clay-wash px-3.5 py-3 text-[0.8125rem] leading-snug"
           >
             {err}
           </motion.p>

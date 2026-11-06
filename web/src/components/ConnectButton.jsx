@@ -16,7 +16,8 @@ import { short } from "../lib/askonly.js";
  * De-duplicated by name because the legacy injected() fallback and the 6963
  * announcement are often the same wallet twice.
  */
-export default function ConnectButton({ size = "sm", className }) {
+export default function ConnectButton({ size = "sm", className, tone = "light" }) {
+  const dark = tone === "dark";
   const { address, isConnected, connector: active } = useAccount();
   const { connect, connectors, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
@@ -66,13 +67,13 @@ export default function ConnectButton({ size = "sm", className }) {
   if (isConnected) {
     return (
       <button
-        className={clsx("btn", size === "sm" && "btn-sm", className)}
+        className={clsx("btn", size === "sm" && "btn-sm", dark && "btn-on-forest", className)}
         onClick={() => disconnect()}
         title={`${active?.name ?? "Wallet"} — click to disconnect`}
       >
         {active?.icon && <img src={active.icon} alt="" className="h-4 w-4 rounded-[3px]" />}
-        <span className="font-mono tnum">{short(address, 6, 4)}</span>
-        <LogOut size={14} />
+        <span className="min-w-0 truncate font-mono tnum">{short(address, 6, 4)}</span>
+        <LogOut size={14} strokeWidth={1.75} className={clsx(dark && "ml-auto")} />
       </button>
     );
   }
@@ -80,7 +81,7 @@ export default function ConnectButton({ size = "sm", className }) {
   if (wallets.length === 0) {
     return (
       <a
-        className={clsx("btn", size === "sm" ? "btn-sm" : "btn-lg", className)}
+        className={clsx("btn", size === "sm" ? "btn-sm" : "btn-lg", dark && "btn-on-forest", className)}
         href="https://ethereum.org/en/wallets/find-wallet/"
         target="_blank"
         rel="noreferrer"
@@ -97,7 +98,7 @@ export default function ConnectButton({ size = "sm", className }) {
     const only = wallets[0];
     return (
       <button
-        className={clsx("btn btn-primary", size === "sm" ? "btn-sm" : "btn-lg", className)}
+        className={clsx("btn", dark ? "btn-mint" : "btn-primary", size === "sm" ? "btn-sm" : "btn-lg", className)}
         onClick={() => connect({ connector: only.connector })}
         disabled={isPending}
       >
@@ -118,7 +119,7 @@ export default function ConnectButton({ size = "sm", className }) {
   return (
     <div className="relative" ref={boxRef}>
       <button
-        className={clsx("btn btn-primary", size === "sm" ? "btn-sm" : "btn-lg", className)}
+        className={clsx("btn", dark ? "btn-mint" : "btn-primary", size === "sm" ? "btn-sm" : "btn-lg", className)}
         onClick={() => setOpen((v) => !v)}
         disabled={isPending}
       >
@@ -133,12 +134,13 @@ export default function ConnectButton({ size = "sm", className }) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            style={{ transformOrigin: "top right" }}
-            className="absolute right-0 z-[70] mt-2 w-[248px] rounded-[14px] border-[1.6px] border-ink bg-cream p-1.5"
+            style={{ transformOrigin: dark ? "bottom left" : "top right" }}
+            className={clsx(
+              "absolute z-[70] w-[248px] rounded-[14px] border border-line bg-paper p-1.5 text-ink shadow-[0_8px_24px_rgba(16,26,21,0.18)]",
+              dark ? "bottom-full left-0 mb-2" : "right-0 mt-2",
+            )}
           >
-            <p className="px-2.5 py-2 text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-ink-50">
-              {wallets.length} wallets found
-            </p>
+            <p className="eyebrow px-2.5 py-2">{wallets.length} wallets found</p>
             {wallets.map((c) => (
               <button
                 key={c.uid}
@@ -146,7 +148,7 @@ export default function ConnectButton({ size = "sm", className }) {
                   connect({ connector: c.connector });
                   setOpen(false);
                 }}
-                className="flex w-full items-center gap-2.5 rounded-[9px] px-2.5 py-2.5 text-left text-[0.875rem] font-medium transition-colors hover:bg-cream-2"
+                className="flex w-full items-center gap-2.5 rounded-[8px] px-2.5 py-2.5 text-left text-[0.875rem] font-medium transition-colors hover:bg-cream"
               >
                 {c.icon ? (
                   <img src={c.icon} alt="" className="h-5 w-5 rounded-[4px]" />
