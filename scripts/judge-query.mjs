@@ -7,15 +7,18 @@
  * If ARKIV_ACCESS_KEY is set it uses it; otherwise it falls back to the keyless
  * public endpoint, which is heavily rate limited but works for a single read.
  *
- * It shows the thing the project is actually about: the capabilities issued by
- * our writing wallet, and the fact that expired ones are simply NOT THERE.
+ * It shows the thing the project is actually about: the capabilities our writing
+ * wallet has written for everyone who uses AskOnly, and the fact that expired ones
+ * are simply NOT THERE. The server pays for every write, so `.createdBy()` on its
+ * address finds every record the app wrote. The `owner` attribute is the document
+ * owner's own wallet, so filtering on it would find only one person's.
  */
 
 import { createPublicClient } from "@arkiv-network/sdk";
 import { rabdi } from "@arkiv-network/sdk/chains";
 import { http } from "viem";
-import { eq, and, desc } from "@arkiv-network/sdk/query";
-import { str, addr } from "@arkiv-network/sdk/schema";
+import { eq, desc } from "@arkiv-network/sdk/query";
+import { str } from "@arkiv-network/sdk/schema";
 import { Grant, Access, Refusal } from "../src/arkiv/schema.mjs";
 
 const WALLET = "0x4CA8176777D44B76235684b63334088C618994e4";
@@ -68,7 +71,7 @@ const { entities } = await reader
     threshold: true,
   })
   .from(Grant)
-  .where(eq("owner", addr(WALLET)))
+  .createdBy(WALLET)
   .orderBy(desc("issuedAt"))
   .limit(20)
   .fetch();
@@ -83,7 +86,8 @@ for (const e of entities) {
   console.log(
     `  ${e.grantId.value}  ${String(e.verifierName.value).padEnd(14)} ` +
       `${String(e.questionSet.value).padEnd(11)} ${String(e.state.value).padEnd(8)} ` +
-      `${e.usesSpent.value}/${e.usesAllowed.value} used  ` +
+      // Grants since 7 Nov carry no count (usesAllowed 0): a permission is for a time.
+      `${Number(e.usesAllowed.value) ? `${e.usesSpent.value}/${e.usesAllowed.value} used` : `${e.usesSpent.value} asked`}  ` +
       `dies@block ${e.$expiresAt}  ${left > 0 ? `${Math.round(left / 2000)} blocks left` : "overdue"}`,
   );
 }
@@ -92,7 +96,7 @@ for (const e of entities) {
 const answered = await reader
   .select({ accessId: true, askerName: true, question: true, answer: true, requestId: true, provider: true, verification: true })
   .from(Access)
-  .where(eq("owner", addr(WALLET)))
+  .createdBy(WALLET)
   .orderBy(desc("at"))
   .limit(5)
   .fetch();
@@ -108,12 +112,12 @@ for (const a of answered.entities) {
 const refused = await reader
   .select({ question: true, reason: true })
   .from(Refusal)
-  .where(eq("owner", addr(WALLET)))
+  .createdBy(WALLET)
   .orderBy(desc("at"))
   .limit(5)
   .fetch();
 
-console.log(`${refused.entities.length} refusal(s) — questions somebody was not permitted to ask:\n`);
+console.log(`${refused.entities.length} refusal(s) — questions that were turned down:\n`);
 for (const r of refused.entities) {
   console.log(`  "${r.question.value}"  refused: ${r.reason.value}`);
 }
