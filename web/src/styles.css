@@ -151,7 +151,14 @@
   }
   .btn:hover:not(:disabled) { background: rgba(26, 26, 26, 0.05); }
   .btn:active:not(:disabled) { transform: translateY(1px); }
-  .btn:disabled { color: var(--color-ink-30); border-color: var(--color-line); cursor: not-allowed; }
+  .btn:disabled {
+    color: var(--color-ink-30);
+    border-color: var(--color-line);
+    cursor: not-allowed;
+  }
+  /* A disabled button must lose the accent entirely. Keeping the mint fill and
+     only dimming the label gave ink-30 on mint at ~1.9:1. */
+  .btn-primary:disabled { background: transparent; }
   .btn-primary { background: var(--color-mint); }
   .btn-primary:hover:not(:disabled) { background: var(--color-mint-deep); }
   .btn-sm { padding: 0.5rem 0.875rem; font-size: 0.875rem; border-radius: 8px; }
@@ -159,12 +166,13 @@
   .btn-quiet { border-color: transparent; }
   .btn-quiet:hover:not(:disabled) { background: rgba(26, 26, 26, 0.06); }
 
+  /* Sentence case, because uppercase + tracking is rationed to .eyebrow.
+     Twelve tracked caps stacked in one sheet was the loudest generated-form
+     signal left in the product. */
   .field-label {
     display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 0.8125rem;
+    font-weight: 500;
     color: var(--color-ink-50);
     margin-bottom: 0.375rem;
   }
@@ -180,7 +188,9 @@
     border-radius: 8px;
     transition: border-color 160ms var(--ease-brand);
   }
-  .input:focus { outline: none; border-color: var(--color-ink); box-shadow: 0 0 0 3px var(--color-mint); }
+  /* Focus is an ink border, not a mint ring. Mint marks the primary action
+     and nothing else; a ring on every field made it the sixth thing wearing it. */
+  .input:focus { outline: none; border-color: var(--color-ink); box-shadow: 0 0 0 1px var(--color-ink); }
   .input::placeholder { color: var(--color-ink-30); }
 
   /* quiet, mono, never a glowing pill */

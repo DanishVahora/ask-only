@@ -30,10 +30,14 @@ export default function PermissionTicket({ grant, onRevoke }) {
   }, [grant.diesAt]);
 
   const dying = !r.dead && r.ms < 60_000;
+  // The bar only EXISTS inside the last ten minutes. Showing one for a 7-day
+  // grant meant a full green bar for six days that then collapsed - the
+  // component claimed to solve exactly that and did not.
+  const inFinalStretch = !r.dead && r.ms <= 600_000;
   const spent = grant.usesSpent >= grant.usesAllowed;
   const over = r.dead || spent || grant.state === "revoked";
   const link = `${location.origin}/ask?grant=${grant.grantId}`;
-  const pct = r.dead ? 0 : Math.max(1.5, Math.min(100, (r.ms / 600_000) * 100));
+  const pct = inFinalStretch ? Math.min(100, (r.ms / 600_000) * 100) : 0;
 
   return (
     <motion.article
@@ -73,7 +77,9 @@ export default function PermissionTicket({ grant, onRevoke }) {
             over ? "text-ink-30 line-through decoration-1" : "text-ink",
           )}
         >
-          “{grant.note || grant.questionSet}”
+          {/* Never fall back to the question-set slug: "income" set in serif
+              at 20px is the worst string this screen can produce. */}
+          “{grant.note || "(the signed question is unavailable)"}”
         </p>
       </div>
 
@@ -93,26 +99,33 @@ export default function PermissionTicket({ grant, onRevoke }) {
             {grant.usesSpent} of {grant.usesAllowed} asked
           </span>
           <span className={clsx(dying && "text-clay", over ? "text-ink-30" : "font-semibold text-ink")}>
-            {r.dead ? "—" : r.showBlocks ? `${r.blocks} blocks` : r.text}
+            {r.dead ? "—" : r.showBlocks ? `${r.blocks.toLocaleString()} blocks` : r.text}
           </span>
         </div>
 
-        <div className="mt-2 h-[4px] overflow-hidden rounded-full bg-line">
-          <motion.div
-            className={clsx("h-full rounded-full", r.dead ? "bg-line-2" : dying ? "bg-clay" : "bg-seal")}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.6, ease: "linear" }}
-          />
-        </div>
+        {/* Transform, not width: animating width re-fired by the 1s tick never
+            settles. The bar appearing at all is the warning; its drain is the
+            clock. */}
+        {inFinalStretch && (
+          <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-line">
+            <div
+              className={clsx(
+                "h-full origin-left rounded-full transition-transform duration-1000 ease-linear",
+                dying ? "bg-clay" : "bg-seal",
+              )}
+              style={{ transform: `scaleX(${pct / 100})` }}
+            />
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between gap-3">
-          <span className="font-mono tnum text-[0.6875rem] text-ink-30">
+          <span className="font-mono tnum text-[0.6875rem] text-ink-50">
             {r.dead ? "the network stopped returning it" : r.showBlocks ? r.text : `${r.blocks.toLocaleString()} blocks`}
           </span>
           {!over && (
             <div className="flex items-center gap-1">
               <button
-                className="btn btn-sm btn-quiet !px-2 !py-1 text-[0.75rem]"
+                className="btn btn-sm btn-quiet px-2 py-1 text-[0.75rem]"
                 onClick={() => {
                   navigator.clipboard?.writeText(link);
                   setCopied(true);
@@ -123,11 +136,10 @@ export default function PermissionTicket({ grant, onRevoke }) {
                 {copied ? "Copied" : "Link"}
               </button>
               <button
-                className="btn btn-sm btn-quiet !px-2 !py-1 text-[0.75rem] text-ink-50 hover:text-clay"
+                className="btn btn-sm btn-quiet px-2 py-1 text-[0.75rem] text-ink-50 hover:text-clay"
                 onClick={() => onRevoke?.(grant)}
-                title="Revoke now, without waiting for it to expire"
               >
-                <Ban size={12} />
+                <Ban size={13} />Revoke
               </button>
             </div>
           )}

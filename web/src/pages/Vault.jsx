@@ -60,7 +60,11 @@ function Gate() {
 
 /* ------------------------------------------------------------------ page -- */
 
-const KIND_ICON = { pdf: FileType, image: ImageIcon };
+// docKind is payslip | bank | rent | identity | other - the pdf/image kind
+// from DropDoc is never persisted, so keying on it rendered one icon per row.
+const KIND_ICON = {
+  payslip: FileText, bank: FileType, rent: FileType, identity: ImageIcon, other: FileText,
+};
 
 export default function Vault() {
   const { address, isConnected } = useAccount();
@@ -91,9 +95,18 @@ export default function Vault() {
   });
 
   const vaults = docs?.vaults ?? [];
+  // Bind the select to real state as soon as documents exist, so what is shown
+  // and what gets signed are the same value.
+  if (vaults.length && !g.vaultId) {
+    queueMicrotask(() => setG((v) => (v.vaultId ? v : { ...v, vaultId: vaults[0].vaultId })));
+  }
   const all = grants?.grants ?? [];
-  const live = all.filter((x) => x.diesAt > Date.now() && x.state === "live");
-  const past = all.filter((x) => !(x.diesAt > Date.now() && x.state === "live"));
+  // "Live" has to mean the same thing here as it does on a ticket, or the
+  // heading and the cards contradict each other on screen.
+  const isLive = (x) =>
+    x.diesAt > Date.now() && x.state === "live" && x.usesSpent < x.usesAllowed;
+  const live = all.filter(isLive);
+  const past = all.filter((x) => !isLive(x));
   const question = (QUESTION_TEXT[g.set] ?? (() => ""))(g.param);
 
   async function seal() {
@@ -121,8 +134,11 @@ export default function Vault() {
   }
 
   async function issue() {
-    const vaultId = g.vaultId || vaults[0]?.vaultId;
-    if (!vaultId) return toast.error("seal a document first");
+    // No silent fallback. The whole claim is that you sign the exact terms, so
+    // the signed vaultId must be the one the select is actually showing -
+    // never an inferred default.
+    const vaultId = g.vaultId;
+    if (!vaultId) return toast.error("choose which document this is about");
     if (!/^0x[0-9a-fA-F]{40}$/.test(g.verifier)) return toast.error("that is not a complete address yet");
     if (g.verifier.toLowerCase() === address.toLowerCase()) {
       return toast.error("issue it to the other person's address, not your own");
@@ -175,33 +191,39 @@ export default function Vault() {
   if (!isConnected) return <Gate />;
 
   return (
-    <div className="mx-auto max-w-[860px] px-5 pb-32 pt-10">
+    <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-10">
       <Inbox />
 
       {/* The heading states the actual situation rather than naming the page. */}
       <div className="flex items-end justify-between gap-6 border-b border-line pb-4">
         <div>
-          <p className="eyebrow">Your vault</p>
-          <h1 className="mt-2 font-sans text-[1.375rem] font-semibold tracking-[-0.02em]">
-            {live.length === 0
-              ? "Nobody can ask you anything"
-              : live.length === 1
-                ? "One person can ask you one question"
-                : `${live.length} permissions are live`}
+          {/* The page's one display moment, and it states the situation in
+              every branch - so a separate centred empty state is unnecessary. */}
+          <h1 className="max-w-[22ch] text-[clamp(1.75rem,1.3rem+1.8vw,2.5rem)]">
+            {live.length === 0 ? (
+              vaults.length ? (
+                <>Nothing is being asked.<br /><span className="italic text-ink-50">That is the resting state.</span></>
+              ) : (
+                <>Start by sealing <span className="italic">a document.</span></>
+              )
+            ) : live.length === 1 ? (
+              <>One person can ask you <span className="italic">one question.</span></>
+            ) : (
+              <>{live.length} permissions are <span className="italic">alive.</span></>
+            )}
           </h1>
         </div>
         <button
           className="btn btn-primary btn-sm shrink-0"
-          onClick={() => setSheet("grant")}
-          disabled={!vaults.length}
-          title={vaults.length ? undefined : "Seal a document first"}
+          onClick={() => setSheet(vaults.length ? "grant" : "doc")}
         >
-          <Plus size={14} />Issue
+          {vaults.length ? <Plus size={14} /> : <Lock size={14} />}
+          {vaults.length ? "Issue" : "Seal a document"}
         </button>
       </div>
 
       {live.length > 0 ? (
-        <motion.div layout className="mt-6 grid gap-4 sm:grid-cols-2">
+        <motion.div layout className="mt-6 grid max-w-[720px] gap-4">
           <AnimatePresence mode="popLayout">
             {live.map((gr) => (
               <PermissionTicket key={gr.grantId} grant={gr} onRevoke={revoke} />
@@ -209,24 +231,11 @@ export default function Vault() {
           </AnimatePresence>
         </motion.div>
       ) : (
-        <div className="py-20 text-center">
-          <p className="mx-auto max-w-[24ch] font-serif text-[1.75rem] leading-tight tracking-[-0.025em]">
-            {vaults.length ? (
-              <>Nothing is being asked. <span className="italic text-ink-50">That is the resting state.</span></>
-            ) : (
-              <>Start by sealing <span className="italic">a document.</span></>
-            )}
-          </p>
-          <p className="mx-auto mt-4 max-w-[44ch] text-[0.875rem] leading-relaxed text-ink-50">
-            {vaults.length
-              ? "Issue someone a permission and it appears here, counting down to its own expiry."
-              : "It is encrypted in this tab. What leaves is ciphertext carrying its own death block."}
-          </p>
-          <button className="btn btn-primary mt-7" onClick={() => setSheet(vaults.length ? "grant" : "doc")}>
-            {vaults.length ? <Plus size={16} /> : <Lock size={16} />}
-            {vaults.length ? "Issue a permission" : "Seal a document"}
-          </button>
-        </div>
+        <p className="max-w-[46ch] py-10 text-[0.9375rem] leading-relaxed text-ink-50">
+          {vaults.length
+            ? "Issue someone a permission and it appears here, counting down to its own expiry."
+            : "Seal one below. It is encrypted in this tab, and what leaves is ciphertext carrying its own death block."}
+        </p>
       )}
 
       {/* Spent and expired, folded away. Kept because their absence is the point. */}
@@ -235,9 +244,22 @@ export default function Vault() {
           <summary className="cursor-pointer list-none border-t border-line pt-4 font-mono text-[0.75rem] text-ink-50 transition-colors hover:text-ink">
             {past.length} expired or spent — nothing was deleted, the network stopped returning them
           </summary>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {past.map((gr) => <PermissionTicket key={gr.grantId} grant={gr} />)}
-          </div>
+          {/* A dead permission is a row, not an object. That one distinction
+              carries more hierarchy than any amount of greying. */}
+          <ul className="m-0 mt-3 list-none p-0">
+            {past.map((gr) => (
+              <li key={gr.grantId}
+                className="flex items-baseline gap-3 border-b border-line py-2 text-[0.8125rem] last:border-0">
+                <span className="w-[13ch] shrink-0 truncate font-mono text-[0.75rem] text-ink-50">
+                  {gr.verifierName || short(gr.verifier, 6, 4)}
+                </span>
+                <span className="flex-1 truncate text-ink-50">{gr.note || "\u2014"}</span>
+                <span className="shrink-0 font-mono text-[0.75rem] text-ink-50">
+                  {gr.usesSpent >= gr.usesAllowed ? "spent" : gr.state === "revoked" ? "revoked" : "expired"}
+                </span>
+              </li>
+            ))}
+          </ul>
         </details>
       )}
 
@@ -260,7 +282,7 @@ export default function Vault() {
                 <li key={v.vaultId} className="flex items-center gap-3 border-b border-line py-2.5 last:border-0">
                   <Icon size={14} className="shrink-0 text-ink-30" />
                   <span className="flex-1 truncate text-[0.875rem]">{v.label}</span>
-                  <span className="font-mono tnum text-[0.75rem] text-ink-30">
+                  <span className="font-mono tnum text-[0.75rem] text-ink-50">
                     {(v.bytesLen / 1024).toFixed(1)} KiB
                   </span>
                 </li>
@@ -276,7 +298,13 @@ export default function Vault() {
 
       <Sheet
         open={sheet === "doc"}
-        onClose={() => setSheet(null)}
+        onClose={() => {
+          // The plaintext was only needed while this sheet was open. Leaving it
+          // in React state keeps a decrypted document alive for the life of the
+          // page, which is not a thing this product should do.
+          setDoc({ label: "", kind: "payslip", days: 180, pass: "", text: "" });
+          setSheet(null);
+        }}
         title="Seal a document"
         subtitle="Read and encrypted in this tab. The file itself is never uploaded — not to us, and not to the enclave."
         footer={
