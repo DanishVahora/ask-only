@@ -16,6 +16,8 @@ was checked against that system before it was allowed to stay.
 - Wrote the documentation in `arkiv/`, this file, and the README.
 - Ran every probe and test in `scripts/`, read the output, and corrected itself when the
   output disagreed with what it had written.
+- Wrote the prompt for the logo, then measured the images that came back and redrew the mark
+  as SVG. The prompt is in `docs/image-prompts.md` and the images are in `docs/brand/`.
 
 ## What the author did
 
@@ -24,6 +26,7 @@ was checked against that system before it was allowed to stay.
   that the UI must not look generated.
 - Rejected several earlier project ideas, which is why this one exists.
 - Supplied all credentials. No key is in this repository.
+- Generated the logo in ChatGPT from that prompt and chose the version that ships.
 
 ## Where the AI was wrong, and how it was caught
 
@@ -53,6 +56,8 @@ Listing these because "we used AI" is not a disclosure; what it got wrong is.
 Claude Opus 5 (`claude-opus-5`) for the work in this repository. The enclave the product
 itself calls is `glm-5.3` on 0G Private Compute, which is a product dependency rather than
 a development tool.
+
+The two logo images in `docs/brand/` came from ChatGPT's image generator (OpenAI).
 
 ## The rule that was applied throughout
 

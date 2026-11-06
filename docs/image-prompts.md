@@ -1,5 +1,37 @@
 # Image prompts
 
+## The logo
+
+Used. Claude wrote this prompt for ChatGPT's image generator on 7 November 2026. The author ran
+it, chose the result, then sent the follow-up in the same chat. The two PNGs that came back are
+in [`brand/`](brand/). The site doesn't ship those pixels: the mark was measured off them and
+redrawn as SVG, in `web/public/favicon.svg` and `web/src/components/Mark.jsx`.
+
+```text
+Design a minimal logo mark for "AskOnly", an app that answers a question about your document without ever sending the document. Icon only: no text, no letters, no numbers.
+
+The idea: one sheet of paper, flat and upright, with its bottom-right corner clipped off at 45 degrees. The sheet is solid near-black. Across its middle runs one short, thick horizontal stroke of yellow highlighter, as if one line of the document was marked and everything else withheld. That is the whole logo: one sheet, one yellow stroke.
+
+Style: flat vector look, solid fills, crisp geometric edges, slightly rounded corners. No gradients, shadows, outlines, textures, 3D or glow. It must still read clearly at 16×16 pixels, so keep it to those two shapes and make the stroke bold.
+
+Colours: sheet #1B1A16, highlighter stroke #FFD447, background flat #F4F2E9.
+
+Composition: centred on a square 1:1 canvas, the mark filling about 60% of it, with even space around it.
+
+Avoid: padlocks, shields, keys, eyes, chat bubbles, sparkles, circuit lines, any lettering.
+```
+
+The follow-up:
+
+```text
+Now give me two versions of this exact mark as PNGs with a transparent background: one with the mark filling about 60% of the square, for use next to the name, and one cropped tight for a browser tab icon, with the mark filling about 90% of the square and the yellow stroke a little thicker.
+```
+
+## Four photos for an earlier landing page
+
+Not used. The landing page was rebuilt without photos, so none of these reached the site. They
+stay here as a record of what was tried.
+
 Four images. Paste each prompt as-is into ChatGPT (GPT Image) or Midjourney. They are written
 to produce one coherent set, not four unrelated pictures.
 
@@ -17,7 +49,7 @@ them one at a time and the page is never broken.
 
 ---
 
-## The art direction (read this once)
+### The art direction (read this once)
 
 Everything is **still-life photography**, not illustration, not 3D, not AI-art. Three materials
 only: **aged bronze or brass**, **ivory bookbinding cloth**, and **blank uncoated paper**. One
@@ -40,7 +72,7 @@ a stock photo of "security".
 
 ---
 
-## 1 — `hero.webp` · the document that does not move
+### 1 — `hero.webp` · the document that does not move
 
 The idea: everything around it has moved; **the paper has not**.
 
@@ -70,7 +102,7 @@ a well-printed design annual.
 
 ---
 
-## 2 — `enclave.webp` · the sealed box with a narrow slot
+### 2 — `enclave.webp` · the sealed box with a narrow slot
 
 The idea: the model is **inside** something sealed. Only a sliver goes in.
 
@@ -100,7 +132,7 @@ clear empty space above.
 
 ---
 
-## 3 — `expiry.webp` · the seal that was allowed to lapse
+### 3 — `expiry.webp` · the seal that was allowed to lapse
 
 The idea: **two outcomes, and the quiet one is the default.** This image is the asymmetry.
 
@@ -130,7 +162,7 @@ Composition: generous empty ivory between the two halves; neither object centred
 
 ---
 
-## 4 — `close.webp` · nothing to delete
+### 4 — `close.webp` · nothing to delete
 
 The idea: there is **no copy to destroy**, because one was never made.
 
@@ -157,7 +189,7 @@ empty background. Restrained and quiet — the image should feel like an ending.
 
 ---
 
-## After you generate them
+### After you generate them
 
 1. Save as `.webp` (or `.jpg` — change the filename in `index.html` to match) into
    `app/public/img/`.
