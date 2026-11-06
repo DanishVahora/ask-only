@@ -18,8 +18,10 @@
     "chain": "hardhat node --port 8546",
     "deploy": "node --env-file=.env scripts/deploy.mjs",
     "test": "node --test test/*.test.mjs",
-    "start": "node --env-file=.env app/server.mjs",
-    "dev": "node --env-file=.env --watch app/server.mjs"
+    "start": "node scripts/dev.mjs",
+    "dev": "node scripts/dev.mjs",
+    "api": "node --env-file=.env app/server.mjs",
+    "web": "npm --prefix web run dev"
   },
   "dependencies": {
     "@arkiv-network/sdk": "^1.0.1",

@@ -45,7 +45,12 @@ import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVID
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(import.meta.dirname, "..");
-const PUBLIC = path.join(ROOT, "app", "public");
+/* The frontend is a React app in web/. In dev, Vite serves it on 5173 and
+ * proxies /api here. In production we serve its build output. The old
+ * hand-rolled pages are gone - with them went a prompt() for the OWNER's
+ * passphrase on the VERIFIER's screen, which would have handed over the
+ * document and voided the entire premise. */
+const PUBLIC = path.join(ROOT, "web", "dist");
 /**
  * 5173, and it is NOT an arbitrary choice.
  *
@@ -66,7 +71,17 @@ const PUBLIC = path.join(ROOT, "app", "public");
  * returned 204 would have missed that the response must also carry the
  * Access-Control-Allow-Origin header back.
  */
-const PORT = Number(process.env.PORT || 5173);
+/* The API now runs on 5174 and Vite owns 5173.
+ *
+ * 5173 is not a preference - it is the ONLY localhost origin 0G's CORS
+ * allowlist accepts (probed 2026-11-06: 5173 -> 204 with
+ * Access-Control-Allow-Origin; 5174, 4319, 8080, 8000, 4200 -> 403). The
+ * owner's browser calls the enclave directly, so the page must be served from
+ * 5173 or that call dies and the app silently degrades to relaying through a
+ * server - the trusted middleman this design exists to remove.
+ *
+ * So: Vite serves the app on 5173 and proxies /api here. */
+const PORT = Number(process.env.PORT || 5174);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -739,7 +754,16 @@ async function serveStatic(req, res, url) {
     });
     res.end(body);
   } catch {
-    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
+    // A client-side router owns every non-asset path, so fall back to the app
+    // shell rather than 404ing a real route like /vault on a hard refresh.
+    try {
+      const shell = await readFile(path.join(PUBLIC, "index.html"));
+      res.writeHead(200, { "content-type": MIME[".html"], "content-length": shell.length });
+      res.end(shell);
+    } catch {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" })
+        .end("not built yet - run `npm --prefix web run build`, or use `npm start` for dev");
+    }
   }
 }
 

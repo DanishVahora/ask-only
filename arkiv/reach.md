@@ -114,7 +114,34 @@ Stated plainly, because these are the things that would sink it:
 
 ---
 
-## 7. What Arkiv gets out of it
+## 7. After Mumbai
+
+Asked directly, because the criterion asks it directly.
+
+**Yes, and here is the specific reason rather than a promise.** India's DPDP Rule 4 — registration
+of Consent Managers — commences **13 November 2026**, six days after this deadline. Rule 4 is the
+only route to registration, so on that date a regulated category opens with **no incumbents**. The
+work between now and then is not speculative:
+
+- **Immediately after the event.** Finish the Swarm leg for durable receipts (blocked today only on
+  a postage batch), and replace the demo registry with a real ENSv2 name we control so the
+  refuse→grant→succeed loop runs entirely on canonical infrastructure.
+- **Next.** Local OCR, so a photograph of a payslip never leaves the device even to be read. The
+  only image-capable TeeML model on 0G is down right now, which is what forced v1 to text; when it
+  returns, the extract step moves on-device.
+- **The part that needs other people.** A verifier-side SDK. AskOnly is worth nothing if a landlord
+  or an NBFC cannot accept a bit in place of a PDF, and that is an integration problem, not a
+  cryptography problem. The honest statement is that the protocol is the easy half.
+- **What we will not do.** Register as a Consent Manager ourselves — Part A item 4 requires ₹2 crore
+  of net worth. The useful thing to be here is the open reference implementation a registrant runs,
+  and the protocol everyone else can read.
+
+The code is MIT. If this stops being maintained, it stays forkable, which for a consent layer
+matters more than whether we personally keep going.
+
+---
+
+## 8. What Arkiv gets out of it
 
 A use case that is not in Arkiv's own published list — token lists, chain registries, address
 labels, agent coordination state, expiring marketplace listings — and that does not merely

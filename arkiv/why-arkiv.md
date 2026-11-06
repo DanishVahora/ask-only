@@ -133,7 +133,27 @@ Arkiv makes the expiry *the thing that happens to the record*.
 
 ---
 
-## 6. The limits we will not overstate
+## 6. What we deliberately kept OFF Arkiv
+
+Everything readable on Arkiv is public — *"anyone can write and read entities with any attribute
+names"*. So the question of what we did **not** put there is as much a design decision as what we did.
+
+| Kept off | Where it lives instead | Why |
+|---|---|---|
+| **The passphrase** | the owner's device, in memory, for one operation | It is the only thing between a public ciphertext and the document. It is never transmitted anywhere, including to our own server. |
+| **The document key** | derived in the browser, never persisted | PBKDF2 at 210,000 iterations from the passphrase. There is no key to store, so there is no key to leak. |
+| **The plaintext** | nowhere | It exists in the owner's tab for the duration of one answer. It is never written to disk, never logged, never sent to our server. |
+| **The whole document, even to the enclave** | only the lines bearing on the question | Measured: 4 of 12 lines. The employer, PAN, account number and address never entered the enclave at all. |
+| **Any personal data at all** | — | What is indexed on Arkiv is hashes, addresses, enums, counts and block numbers. There is no name, no figure and no identifier of a person in any entity. |
+| **The 0G API key** | the owner's browser | If our server held it, our server could decrypt and ask — and "nobody sees your document" would be false. |
+
+The ciphertext itself **is** on Arkiv, deliberately, because a `bytes` column carries a death block
+and that makes the document structurally expire rather than merely be marked deleted. That is a
+considered trade: the bytes are public but meaningless, and in exchange they inherit enforced expiry.
+
+---
+
+## 7. The limits we will not overstate
 
 We would rather state these than have a judge find them.
 
@@ -151,7 +171,7 @@ We would rather state these than have a judge find them.
 
 ---
 
-## 7. The one-line version
+## 8. The one-line version
 
 Arkiv is the only store we found where **a record stopping existing is something the network
 does, and keeping one alive is something you have to sign for**. AskOnly turns that single

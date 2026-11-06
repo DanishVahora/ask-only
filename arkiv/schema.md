@@ -1,6 +1,6 @@
 # Schema
 
-Four entities on Arkiv Rabdi (chain `7794095`), defined in
+Five entities on Arkiv Rabdi (chain `7794095`), defined in
 [`src/arkiv/schema.mjs`](../src/arkiv/schema.mjs) with `@arkiv-network/sdk@1.0.1`.
 
 Namespace: `askonly.*`. Writing wallet: `0x4CA8176777D44B76235684b63334088C618994e4`.
@@ -113,6 +113,55 @@ field records what we can prove, not what we hoped to.
 | `detail` | `str` | | human-readable explanation |
 
 `$expiresAt`: 180 days.
+
+---
+
+## `askonly.request` — the second party
+
+The entity that makes AskOnly a protocol rather than a demo. Only the owner's device holds the
+passphrase, so only the owner's device can decrypt and ask the enclave. A verifier therefore
+cannot produce an answer — they can only **request** one, and wait.
+
+| Attribute | Type | Indexed | Meaning |
+|---|---|---|---|
+| `requestId` | `str` | ✓ | `q-` + 8 hex |
+| `grantId` | `str` | ✓ | the capability it is made under |
+| `vaultId` | `str` | ✓ | which document |
+| `owner` | `addr` | ✓ | **whose inbox this lands in** |
+| `asker` | `addr` | ✓ | who is waiting |
+| `askerName` | `str` | ✓ | their ENS name |
+| `questionSet` | `str` | ✓ | income / identity / tenancy / employment |
+| `questionHash` | `str` | ✓ | sha-256 of the exact question |
+| `state` | `str` | ✓ | `pending` `answered` `refused` `withdrawn` |
+| `askedAt` | `u64` | ✓ | ms |
+| `decidedAt` | `u64` | ✓ | ms, `0` until decided |
+| `accessId` | `str` | ✓ | the receipt, once answered |
+| `question` | `str` | | verbatim |
+| `askerSig` | `bytes` | | **EIP-712 — the verifier signed before being told anything** |
+
+`$expiresAt`: bounded by the grant. A request must not outlive the permission it was made under.
+
+`state` is a positive enum for the same reason as everywhere else: the network has no `NOT`, so
+"not yet answered" is inexpressible and `pending` has to be written explicitly.
+
+The queried fields are `owner` + `state` (the inbox) and `requestId` (what the verifier polls).
+
+---
+
+## Who owns what, and who can write it
+
+| Entity | `$owner` | Who authored it | How that is proven |
+|---|---|---|---|
+| `vault` | writing wallet | the data principal | ciphertext is useless without their passphrase |
+| `grant` | writing wallet | the data principal | `ownerSig`, EIP-712 over the exact terms |
+| `request` | writing wallet | the verifier | `askerSig`, EIP-712, signed before being answered |
+| `access` | writing wallet | the data principal's device | `askerSig` field carries the owner's EIP-712 answer signature |
+| `refusal` | writing wallet | either party | the request it refers to carries the signature |
+
+**The writing wallet is a paymaster, not an author.** Browser wallets are on Sepolia, not Rabdi,
+so the server pays every write — and verifies an EIP-712 signature recovers to the claimed
+address before it does. It can pay for a record and cannot author one. A forged grant would
+require a forged signature.
 
 ---
 
