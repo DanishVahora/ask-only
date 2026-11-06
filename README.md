@@ -36,7 +36,7 @@ REVIEWER                        ARKIV                      OWNER'S BROWSER
    │                                          3. decrypt locally │
    │                                             call the enclave│
    │                                             sign the answer │
-   │◄────────── askonly.access (answer + both signatures) ◄──────┤
+   │◄────────── askonly.access (the answer, signed) ◄────────────┤
    │ 4. reads the answer, and only the answer                    │
 ```
 
@@ -47,10 +47,13 @@ If it is closed, questions wait, and that is the price of nobody else being able
 
 Browser wallets are on Sepolia, not Arkiv's chain, and nobody will fund a second chain to try a
 demo — so **the server pays for every Arkiv write.** That is acceptable only because it cannot
-author one: every record carries an EIP-712 signature, and the server verifies it recovers to the
-claimed address before writing. *The operator pays for a transaction and cannot author one.*
+author the records that matter: every seal, grant, question and answer carries an EIP-712 signature,
+from the wallet or from a key the wallet signed in for a week, and the server verifies it before
+writing. *The operator pays for those records and cannot author one.* Refusals are not signed; see
+"What we don't claim".
 
-Proven with three fresh wallets, none of them the server — `scripts/twoparty-prove.mjs`, 14/14:
+Proven with three fresh wallets, none of them the server, by `scripts/twoparty-prove.mjs` (green on
+7 November; the weekly sign-in has its own proof, `npm run prove:session`):
 
 | Attempt | Result |
 |---|---|
@@ -74,8 +77,9 @@ not to the enclave either.
 
 0G *does* serve an image-capable TeeML model, so a photograph could be sent into the enclave
 whole. We deliberately do not: that would mean the enclave sees the employer, the PAN, the bank
-account and the address. Extracting on the device keeps minimisation intact — **measured, the
-enclave sees 4 of 12 lines.**
+account and the address. Extracting on the device keeps minimisation intact: asked whether they can
+afford ₹25,000 rent, the enclave is first shown **7 of the sample payslip's 16 lines**; asked for the
+PAN, it gets one line, `PAN: [withheld]`. It widens only when those cannot settle the question.
 
 **Why bother:** you cannot prove you deleted data. Broadbent & Islam (TCC 2020) proved certified
 deletion is impossible with classical information. So deletion is the wrong primitive.
@@ -94,21 +98,29 @@ npm install
 ARKIV_ACCESS_KEY=ark_live_... node scripts/judge-query.mjs
 ```
 
+It reads every record the app's server wrote (`.createdBy()` on its address), for every user. Real
+output from 7 November, abridged:
+
 ```
-Arkiv Rabdi · chain 7794095 · block 286578
+Arkiv Rabdi · chain 7794095 · block 308418
 writing wallet 0x4CA8176777D44B76235684b63334088C618994e4
 
-1 capability(ies) still returned by the network:
-  g-d72b543d  landlord.eth   income      live     0/1 used  dies@block 588998
+5 capability(ies) still returned by the network:
+  g-9a23550a  Landlord       general     revoked  4/100 used  dies@block 345551  37131 blocks left
+  g-2b3f8cbe  Landlord       income      spent    5/5 used  dies@block 344614  36194 blocks left
+  …
 
-1 receipt(s) — these outlive the permission on purpose:
-  landlord.eth asked "Is monthly income above INR 50000?"
-    -> YES  req f88d4a75-646f-42be-bf04-38532c51422c
+5 receipt(s) — these outlive the permission on purpose:
+   asked "Is monthly income above INR 50000?"
+    -> YES  req req-abc123
     -> enclave 0xD179F4526064846dE9a9E9D93683AF75CB72E503  verified by: provider-address
+  …
 
-1 refusal(s) — questions somebody was not permitted to ask:
-  "What is their exact salary?"  refused: out-of-set
+5 refusal(s) — questions that were turned down:
+  "Is it a permanent role?"  refused: out-of-scope
 ```
+
+Permissions issued since 7 November carry no question count and print as "N asked".
 
 **Look at what is missing.** Several capabilities were issued while building this. Only the ones
 that have not passed their death block come back. An expired entity is not flagged, tombstoned
@@ -125,9 +137,10 @@ Run it again in a few minutes and short-lived grants will have vanished on their
 ```bash
 npm install
 npm --prefix web install
-cp .env.example .env     # ARKIV_ACCESS_KEY, DEPLOYER_PRIVATE_KEY, SEPOLIA_RPC_URL
+cp .env.example .env     # ARKIV_ACCESS_KEY, DEPLOYER_PRIVATE_KEY, SEPOLIA_RPC_URL, ZEROG_API_KEY
 
 npm run preflight        # proves Arkiv, ENSv2 and the 0G enclave are all live
+npm run chain            # in a second terminal: the local chain the contract tests run on
 npm run compile && npm test       # 19 contract tests
 npm start                # API + web.  Open http://localhost:5173
 ```
@@ -144,8 +157,8 @@ selected.
 > **Port 5173 is not arbitrary.** 0G's router allowlists browser origins by *exact origin,
 > including port*. `http://localhost:5173` gets `Access-Control-Allow-Origin` back;
 > `localhost:4319`, `:5174`, `:8080`, `:8000`, `:4200` all get **403**. On any other port the
-> browser cannot reach the enclave and the app silently falls back to relaying through the
-> server — which reintroduces exactly the trusted middleman this design exists to remove.
+> browser cannot reach the enclave, and the app deliberately does not fall back to relaying through
+> the server, which would reintroduce exactly the trusted middleman this design exists to remove.
 > `strictPort` is set so it fails loudly instead of sliding to another port. The API takes the
 > next free port from 5174 and hands it to Vite's proxy.
 
@@ -154,42 +167,41 @@ Proof scripts, each of which measures rather than asserts:
 | Command | What it proves |
 |---|---|
 | `node --env-file=.env scripts/twoparty-prove.mjs` | **the two-party protocol end to end — that the server pays for every write and cannot author one** |
+| `npm run prove:session` | one wallet sign-in per browser: expired, too-long, wrong-date and stranger sessions refused; signed seals; permissions with no count; the rate limit |
 | `npm run prove:integrity` | a signature does what was signed, once: no replays, no other expiry, no other verdict, no write after an end |
 | `ASKONLY_URL=http://localhost:5174 node web/scripts/verify-check.mjs` | the owner's browser checks what the server sends, and catches every change |
 | `node --env-file=.env scripts/arkiv-prove.mjs` | writes a vault, grant, receipt and refusal; measures the event firehose |
 | `node --env-file=.env scripts/arkiv-expiry.mjs <grantId>` | watches a permission die and shows every operation on it fail |
 | `node --env-file=.env scripts/arkiv-retention.mjs` | proves extension is loud and death is silent |
-| `node --env-file=.env scripts/ask-prove.mjs` | the enclave path, minimisation, and the fail-closed cases |
-| `node --env-file=.env scripts/ens-demo.mjs` | refuse → grant → succeed → revoke, on Sepolia |
+| `node --env-file=.env scripts/ens-demo.mjs` | the ENS role gate on its own, which the app does not use: refuse → grant → succeed → revoke, on Sepolia |
 
 ---
 
 ## Architecture
 
 ```
-   OWNER'S MACHINE (localhost:5173)              VERIFIER
-   browser: AES-GCM-256, holds doc key           browser: connects wallet
-        │ ciphertext        │ extract                 │ asks the one question
-        ▼                   ▼                         ▼
-   ┌──────────┐     ┌────────────────┐      ┌────────────────────────┐
-   │  ARKIV   │     │ 0G PRIVATE CPU │      │ ENSv2 ETHRegistry      │
-   │ (Rabdi)  │     │ glm-5.3 TeeML  │      │ 0xd4ebcb…a8b4 Sepolia  │
-   │          │     │ Intel TDX      │      │ hasRoles(uint256,…)    │
-   │ vault    │     │ trust=private  │      └───────────┬────────────┘
-   │ grant ←── $expiresAt IS the permission              │ role = question set
-   │ access   │     └────────┬───────┘                   ▼
-   │ refusal  │              │ yes/no + requestId   ┌──────────────────┐
-   └──────────┘              └────────────────────► │ AskOnlyGate.sol  │
-                                                    └──────────────────┘
+   OWNER'S BROWSER (localhost:5173)                 REVIEWER'S BROWSER
+   AES-GCM-256, holds the document key              a wallet, and questions
+        │ ciphertext           │ the fewest lines          │ signed
+        ▼                      ▼                           ▼
+   ┌──────────────────┐   ┌──────────────────┐   ┌────────────────────┐
+   │ ARKIV (Rabdi)    │   │ 0G PRIVATE CPU   │   │ ASKONLY SERVER     │
+   │ vault · grant    │   │ glm-5.3, TeeML   │   │ checks signatures, │
+   │ request · access │   │ Intel TDX        │   │ pays the Arkiv gas │
+   │ refusal          │   │ trust = private  │   └────────────────────┘
+   └──────────────────┘   └──────────────────┘
+   a grant's $expiresAt IS the permission
 ```
 
 | Layer | Role | Why nothing else does it |
 |---|---|---|
 | **Arkiv** | the capability, and the document | expiry is *enforced by the network*; extension emits an event, death emits nothing |
 | **0G PC** | the only reader | a model in a TDX enclave is the only adapter from unsigned, unstructured paper to one bit |
-| **ENSv2** | who may ask what | the question set *is* an on-chain role bitmap; revoking is revoking a role |
 
-Deployed on Sepolia, verified by reading the constructor values back:
+**An ENS role gate, built but not used by the app.** `AskOnlyGate.sol` checks an ENSv2 role bitmap
+with `hasRoles`, has 19 contract tests, and `scripts/ens-demo.mjs` runs refuse → grant → answer on
+Sepolia. The web app does not consult it: its permissions are Arkiv records. Deployed on Sepolia,
+verified by reading the constructor values back:
 
 | Contract | Address |
 |---|---|
@@ -197,7 +209,7 @@ Deployed on Sepolia, verified by reading the constructor values back:
 | `MockENSRegistry` (writable demo registry) | [`0x782E197F213c7eb04D578459a3b42bE861aC2E88`](https://sepolia.etherscan.io/address/0x782E197F213c7eb04D578459a3b42bE861aC2E88) |
 | `AskOnlyGateDemo` | [`0xEd17815fF920bc13A160ec504f9ef710B1E6ef14`](https://sepolia.etherscan.io/address/0xEd17815fF920bc13A160ec504f9ef710B1E6ef14) |
 
-Addresses live in `deployments.sepolia.json`; **nothing is hard-coded in the UI.**
+Addresses live in `deployments.sepolia.json`.
 
 ---
 
@@ -206,7 +218,7 @@ Addresses live in `deployments.sepolia.json`; **nothing is hard-coded in the UI.
 The four graded documents, plus the schema:
 
 - [`arkiv/why-arkiv.md`](arkiv/why-arkiv.md) — why this is impossible on anything else
-- [`arkiv/how-you-use-arkiv.md`](arkiv/how-you-use-arkiv.md) — the four entities and six queries
+- [`arkiv/how-you-use-arkiv.md`](arkiv/how-you-use-arkiv.md) — the five entities and the queries the server runs
 - [`arkiv/friction.md`](arkiv/friction.md) — everything that was rough, measured
 - [`arkiv/reach.md`](arkiv/reach.md) — who this is for and what has to be true
 - [`arkiv/schema.md`](arkiv/schema.md) — every attribute and the limits it is built against
@@ -248,14 +260,18 @@ A privacy project that overstates is worse than one that does less.
 - **We are not a registered Consent Manager** and cannot be — the DPDP Rules First Schedule
   Part A item 4 requires ₹2 crore net worth. AskOnly is the reference implementation a
   registrant would run.
-- **The demo's writable ENS registry is a mock**, because roles cannot be granted on a name we
-  do not control. It replicates the real `ALL_ROLES` validation and root-OR semantics, and the
-  production gate deployed alongside it reads the canonical ETHRegistry. Both are labelled
-  everywhere.
-- **The hosted demo is a trusted operator.** 0G's CORS allowlist rejects deployed origins, so a
-  hosted instance must relay with its own key and can see the extract. It says so in a permanent
-  banner, and `/api/ask/relay` refuses to run on localhost so the honest path cannot be
-  bypassed.
+- **The ENS role gate is not used by the app.** It is deployed and tested on Sepolia (above), but
+  the app's permissions are Arkiv records, so we are not entering the ENSv2 track.
+- **A hosted copy would be a trusted operator, so there is no hosted demo.** 0G's CORS allowlist
+  rejects deployed origins, so a hosted instance would have to relay with its own key and could see
+  the extract. No screen warns about that yet and the app does not use the relay;
+  `/api/ask/relay` refuses to run on localhost. AskOnly runs on localhost.
+- **The weekly sign-in key sits in the browser.** The key that signs for a wallet for a week is in
+  `localStorage`, so anyone who can run script on the page or read the browser profile can act as
+  that wallet in AskOnly until it expires; the server cannot end it early. It cannot move funds.
+- **Refusals are not signed, and the reviewer's screen trusts the server.** The owner's browser
+  checks every signature before it answers, but a refusal carries no signature, and the reviewer's
+  page does not re-check the owner's signature on an answer.
 
 ---
 
