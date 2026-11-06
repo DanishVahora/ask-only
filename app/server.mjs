@@ -1,0 +1,483 @@
+/**
+ * AskOnly — the local server.
+ *
+ * ── What this process is, and is not ──────────────────────────────────────────
+ *
+ * In LOCAL mode (you ran `npm start` on your own machine) this server:
+ *   - serves the pages,
+ *   - writes to Arkiv with the funded wallet,
+ *   - reads ENSv2 on Sepolia,
+ *   and takes NO PART in answering a question. The browser decrypts the document
+ *   locally and calls router-api.0g.ai itself, with the owner's own key, which
+ *   never arrives here. 0G's gateway allowlists localhost origins, so that
+ *   direct call works - which is why there is no relay and no middle.
+ *
+ * In HOSTED mode (someone opened a deployed copy) the browser CANNOT reach 0G:
+ *   the router's CORS preflight rejects non-localhost origins with 403. So the
+ *   answer has to be relayed through here, and that makes whoever runs this
+ *   process a trusted party who sees the extract. /api/mode reports
+ *   `operatorSeesExtract: true` in that case and the UI shows a permanent
+ *   banner. We would rather say that than quietly be it.
+ *
+ * The ciphertext posted to /api/vault is already encrypted by the browser. This
+ * process never has the document key and never attempts to decrypt.
+ */
+
+import http from "node:http";
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { createRequire } from "node:module";
+
+import { clients, account, readOnly, preflight, scrub, FAUCET } from "../src/arkiv/client.mjs";
+import {
+  putVault, issueGrant, liveGrant, grantsOf, vaultsOf, vaultCipher,
+  recordAccess, recordRefusal, accessesOf, refusalsOf, spendGrant, extendGrant, revokeGrant,
+} from "../src/arkiv/ledger.mjs";
+import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
+import { QUESTION_SETS, canonicalQuestion, minimalExtract, systemPrompt, userPrompt, sha256hex } from "../src/ask/questions.mjs";
+import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVIDER, MIN_MAX_TOKENS, baseUrl } from "../src/ask/enclave.mjs";
+
+const require = createRequire(import.meta.url);
+const ROOT = path.resolve(import.meta.dirname, "..");
+const PUBLIC = path.join(ROOT, "app", "public");
+const PORT = Number(process.env.PORT || 4319);
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".woff2": "font/woff2",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+};
+
+/* Arkiv context is built once. If it cannot be built we still boot, so the
+   pages load and say what is wrong instead of showing a blank screen. */
+let acct = null;
+let ctx = null;
+let bootError = null;
+try {
+  acct = account();
+  ctx = clients(acct);
+} catch (e) {
+  bootError = scrub(e);
+}
+
+const json = (res, code, body) => {
+  const s = JSON.stringify(body);
+  res.writeHead(code, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(s),
+    "cache-control": "no-store",
+  });
+  res.end(s);
+};
+
+const readBody = (req, limit = 2 * 1024 * 1024) =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error(`body larger than ${limit} bytes`));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on("end", () => {
+      try {
+        resolve(chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {});
+      } catch {
+        reject(new Error("body is not valid JSON"));
+      }
+    });
+    req.on("error", reject);
+  });
+
+const isLocalHost = (req) => {
+  const host = String(req.headers.host ?? "").split(":")[0].toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+};
+
+const hexToBytes = (hex) => {
+  const h = String(hex).replace(/^0x/, "");
+  if (h.length % 2) throw new Error("odd-length hex");
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+};
+
+/* ------------------------------------------------------------------ routes */
+
+const routes = {
+  "GET /api/mode": async (req, res) => {
+    const local = isLocalHost(req);
+    json(res, 200, {
+      mode: local ? "local" : "hosted",
+      // The honest statement, computed rather than configured.
+      browserCanReachEnclave: local,
+      operatorSeesExtract: !local,
+      operatorHasZeroGKey: !local && Boolean(process.env.ZEROG_API_KEY),
+      note: local
+        ? "Your browser calls the enclave directly with your own key. This server takes no part in answering."
+        : "This hosted instance relays the question to the enclave with its own key, so whoever runs it can see the extract. Run it locally and nobody can.",
+      zerogBase: baseUrl(),
+      model: DEFAULT_MODEL,
+      pinnedProvider: PINNED_PROVIDER,
+      minMaxTokens: MIN_MAX_TOKENS,
+    });
+  },
+
+  "GET /api/health": async (req, res) => {
+    const chain = await gateStatus();
+    let arkiv = { connected: false, reason: bootError ?? "not configured" };
+    if (ctx) {
+      try {
+        const p = await preflight(ctx.reader, acct.address);
+        arkiv = { connected: true, ...p, wallet: acct.address };
+      } catch (e) {
+        arkiv = { connected: false, reason: scrub(e) };
+      }
+    }
+    json(res, 200, {
+      ok: chain.connected && arkiv.connected,
+      mode: isLocalHost(req) ? "local" : "hosted",
+      chain,
+      arkiv,
+      questionSets: Object.fromEntries(
+        Object.entries(QUESTION_SETS).map(([k, v]) => [k, { label: v.label, param: v.param, allowsBand: v.allowsBand }]),
+      ),
+      wiringError: wiringError ?? null,
+      faucet: FAUCET,
+    });
+  },
+
+  "GET /api/providers": async (req, res) => {
+    const key = process.env.ZEROG_API_KEY;
+    if (!key) return json(res, 200, { configured: false, providers: [] });
+    try {
+      const list = await providers(DEFAULT_MODEL, key);
+      json(res, 200, {
+        configured: true,
+        model: DEFAULT_MODEL,
+        pinned: PINNED_PROVIDER,
+        providers: list,
+        teeml: list.filter((p) => p.verifiability === "TeeML").length,
+        nonTee: list.filter((p) => p.verifiability !== "TeeML").length,
+      });
+    } catch (e) {
+      json(res, 502, { error: String(e.message).slice(0, 200) });
+    }
+  },
+
+  /** The ENS authorization surface, all reads pinned to one block. */
+  "GET /api/permission": async (req, res, url) => {
+    const asker = url.searchParams.get("asker");
+    const label = url.searchParams.get("label") ?? "";
+    const registry = url.searchParams.get("registry") ?? "demo";
+    if (!asker) return json(res, 400, { error: "asker is required" });
+    try {
+      json(res, 200, await permissionSurface(asker, label, registry));
+    } catch (e) {
+      json(res, 502, { error: String(e.message).slice(0, 240) });
+    }
+  },
+
+  "GET /api/vaults": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const owner = url.searchParams.get("owner") ?? acct.address;
+    try {
+      json(res, 200, { owner, vaults: await vaultsOf(ctx.reader, owner) });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /** The ciphertext, for the owner's browser to decrypt locally. */
+  "GET /api/vault": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    try {
+      const v = await vaultCipher(ctx.reader, id);
+      if (!v) return json(res, 404, { error: `vault ${id} is not returned by the network` });
+      json(res, 200, {
+        ...v,
+        cipher: `0x${Buffer.from(v.cipher).toString("hex")}`,
+        bytesLen: v.cipher.length,
+      });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "POST /api/vault": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      if (!b.cipher) return json(res, 400, { error: "cipher is required (encrypt in the browser)" });
+      const cipher = hexToBytes(b.cipher);
+      const out = await putVault(ctx, {
+        owner: b.owner ?? acct.address,
+        label: b.label ?? "Untitled document",
+        docKind: b.docKind ?? "other",
+        sha256: b.sha256 ?? "",
+        iv: b.iv ?? "",
+        cipher,
+        days: Number(b.days ?? 180),
+      });
+      json(res, 200, out);
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "GET /api/grants": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const owner = url.searchParams.get("owner") ?? acct.address;
+    try {
+      json(res, 200, { owner, grants: await grantsOf(ctx.reader, owner) });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /** A grant that is gone is a 404 - and that 404 IS the expiry. */
+  "GET /api/grant": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const id = url.searchParams.get("id");
+    if (!id) return json(res, 400, { error: "id is required" });
+    try {
+      const g = await liveGrant(ctx.reader, id);
+      if (!g) {
+        return json(res, 404, {
+          error: `grant ${id} is not returned by the network`,
+          expired: true,
+          explain:
+            "This is not a missing record. Past its death block Arkiv stops returning the entity and every operation on it fails.",
+        });
+      }
+      json(res, 200, g);
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "POST /api/grant": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      if (!QUESTION_SETS[b.questionSet]) return json(res, 400, { error: `unknown question set` });
+      const out = await issueGrant(ctx, {
+        vaultId: b.vaultId,
+        owner: b.owner ?? acct.address,
+        verifier: b.verifier,
+        verifierName: b.verifierName ?? "",
+        questionSet: b.questionSet,
+        usesAllowed: Number(b.usesAllowed ?? 3),
+        minutes: b.minutes ? Number(b.minutes) : null,
+        days: b.days ? Number(b.days) : 7,
+        threshold: String(b.threshold ?? ""),
+        note: b.note ?? "",
+        labelId: 0n,
+      });
+      json(res, 200, out);
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "POST /api/grant/extend": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      json(res, 200, await extendGrant(ctx, b.entityKey, { days: Number(b.days ?? 7) }));
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "POST /api/grant/revoke": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      json(res, 200, await revokeGrant(ctx, b.entityKey));
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /**
+   * Build the exact prompt the browser should send to the enclave, plus the
+   * canonical question and its hash. The browser does the HTTP call itself in
+   * local mode, so this endpoint hands over instructions, never an answer, and
+   * never receives the 0G key.
+   */
+  "POST /api/ask/prepare": async (req, res) => {
+    try {
+      const b = await readBody(req);
+      const set = QUESTION_SETS[b.questionSet];
+      if (!set) return json(res, 400, { error: "unknown question set" });
+      if (!b.plaintext) return json(res, 400, { error: "plaintext is required" });
+
+      const question = canonicalQuestion(b.questionSet, b.param);
+      const m = minimalExtract(b.plaintext, b.questionSet);
+      json(res, 200, {
+        question,
+        questionHash: await sha256hex(question),
+        minimisation: { keptLines: m.keptLines, droppedLines: m.droppedLines, totalLines: m.totalLines },
+        request: {
+          url: `${baseUrl()}/chat/completions`,
+          headers: { "Content-Type": "application/json", "X-0G-Provider-Trust-Mode": "private" },
+          body: {
+            model: DEFAULT_MODEL,
+            max_tokens: MIN_MAX_TOKENS,
+            temperature: 0,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: systemPrompt(b.questionSet) },
+              { role: "user", content: userPrompt(question, m.extract) },
+            ],
+          },
+        },
+      });
+    } catch (e) {
+      json(res, 400, { error: String(e.message).slice(0, 300) });
+    }
+  },
+
+  /**
+   * Hosted relay. Only reachable when the browser could not call 0G itself.
+   * Refuses on localhost so the honest path is never silently bypassed.
+   */
+  "POST /api/ask/relay": async (req, res) => {
+    if (isLocalHost(req)) {
+      return json(res, 400, {
+        error:
+          "refusing to relay on localhost - your browser can reach the enclave directly, " +
+          "and routing through this process would make it a party that sees your extract",
+      });
+    }
+    const key = process.env.ZEROG_API_KEY;
+    if (!key) return json(res, 503, { error: "this instance has no 0G key configured" });
+    try {
+      const b = await readBody(req);
+      const r = await askEnclave({
+        plaintext: b.plaintext,
+        setName: b.questionSet,
+        param: b.param,
+        apiKey: key,
+      });
+      json(res, 200, { ...r, relayed: true, operatorSawExtract: true });
+    } catch (e) {
+      json(res, 502, { error: String(e.message).slice(0, 300), kind: e.kind ?? "relay" });
+    }
+  },
+
+  "POST /api/access": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      if (!b.askerSig) {
+        return json(res, 400, {
+          error: "askerSig is required - the answer is released against the asker's signature",
+        });
+      }
+      const out = await recordAccess(ctx, {
+        ...b,
+        askerSig: hexToBytes(b.askerSig),
+      });
+      if (b.grantEntityKey) {
+        try {
+          await spendGrant(ctx, b.grantEntityKey, {
+            usesSpent: b.usesSpent ?? 0,
+            usesAllowed: b.usesAllowed ?? 1,
+          });
+        } catch (e) {
+          out.spendWarning = scrub(e);
+        }
+      }
+      json(res, 200, out);
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "POST /api/refusal": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      json(res, 200, await recordRefusal(ctx, await readBody(req)));
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  "GET /api/accesses": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const owner = url.searchParams.get("owner") ?? acct.address;
+    try {
+      const [accesses, refusals] = await Promise.all([
+        accessesOf(ctx.reader, owner),
+        refusalsOf(ctx.reader, owner),
+      ]);
+      json(res, 200, { owner, accesses, refusals });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+};
+
+/* ----------------------------------------------------------------- static */
+
+async function serveStatic(req, res, url) {
+  let rel = decodeURIComponent(url.pathname);
+  if (rel === "/") rel = "/index.html";
+  if (!path.extname(rel)) rel += ".html";
+  const file = path.join(PUBLIC, rel);
+  // Never serve outside the public dir.
+  if (!file.startsWith(PUBLIC)) {
+    res.writeHead(403).end("forbidden");
+    return;
+  }
+  try {
+    const s = await stat(file);
+    if (!s.isFile()) throw new Error("not a file");
+    const body = await readFile(file);
+    const ext = path.extname(file);
+    res.writeHead(200, {
+      "content-type": MIME[ext] ?? "application/octet-stream",
+      "content-length": body.length,
+      "cache-control": ext === ".woff2" ? "public, max-age=31536000, immutable" : "no-cache",
+    });
+    res.end(body);
+  } catch {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("not found");
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+  const key = `${req.method} ${url.pathname}`;
+  const handler = routes[key];
+  try {
+    if (handler) await handler(req, res, url);
+    else await serveStatic(req, res, url);
+  } catch (e) {
+    if (!res.headersSent) json(res, 500, { error: scrub(e) });
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`\n  AskOnly  http://localhost:${PORT}`);
+  console.log(`  mode     local - your browser talks to the enclave directly`);
+  if (bootError) console.log(`  arkiv    NOT READY: ${bootError}`);
+  else console.log(`  arkiv    wallet ${acct.address}`);
+  if (wiringError) console.log(`  chain    NOT READY: ${wiringError}`);
+  else console.log(`  chain    gate ${addresses.gate} -> ENSv2 ${addresses.ensRegistry}`);
+  console.log();
+});

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- AskOnly: a sheet, and the one bit that leaves it. -->
+  <rect width="32" height="32" rx="6" fill="#F7F3EA"/>
+  <rect x="5.5" y="4.5" width="14" height="23" rx="2" fill="#fff" stroke="#121212" stroke-width="2"/>
+  <path d="M9 11h7M9 15h7M9 19h4" stroke="#121212" stroke-width="1.6" stroke-linecap="round" opacity=".45"/>
+  <circle cx="24" cy="22" r="5" fill="#F59E0B" stroke="#121212" stroke-width="2"/>
+</svg>

@@ -1,0 +1,441 @@
+/* ===========================================================================
+   AskOnly — "Court Paper"
+
+   Engineering-paper neo-brutalism: warm paper, ink, one accent, pressed rather
+   than floating. Paper does not float, it is pressed - so elevation is a hard
+   offset shadow, never a blur.
+
+   Decided once, here, and not re-litigated per screen.
+   =========================================================================== */
+
+/* --- type: three faces, self-hosted, zero runtime requests ---------------- */
+@font-face {
+  font-family: "Geist";
+  src: url("../fonts/geist-var.woff2") format("woff2-variations");
+  font-weight: 300 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../fonts/geist-mono-var.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("../fonts/newsreader-var.woff2") format("woff2-variations");
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("../fonts/newsreader-italic-var.woff2") format("woff2-variations");
+  font-weight: 300 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* ground and ink - one warm ramp, three text roles */
+  --paper: #f7f3ea;
+  --paper-2: #f0e9db;
+  --paper-3: #e9e0cd;
+  --card: #ffffff;
+  --ink: #121212;
+  --ink-2: #3d3a35; /* body */
+  --ink-3: #6b655c; /* captions, metadata */
+  --ink-4: #9a9287; /* placeholder and disabled ONLY - never prose */
+  --rule: #e4dccc;
+  --rule-2: #cfc4ae;
+  --grid: rgba(18, 18, 18, 0.045);
+
+  /* four stamp inks, desaturated on purpose: saturated web colour vibrates
+     against a warm ground and reads as a template */
+  --amber: #f59e0b;
+  --amber-ink: #8a5a05;
+  --amber-wash: #fdf0d4;
+  --seal: #1e6b4f;
+  --seal-ink: #14503b;
+  --seal-wash: #e2efe8;
+  --oxide: #b23a2f;
+  --oxide-ink: #8a2a21;
+  --oxide-wash: #f8e4e1;
+  --indigo: #27418c;
+  --indigo-ink: #1c2f67;
+  --indigo-wash: #e4e9f7;
+
+  /* who owns what */
+  --ens: var(--indigo);
+  --zerog: var(--ink);
+  --arkiv: var(--seal);
+
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+
+  --t-display: clamp(2.45rem, 1.5rem + 3.1vw, 4.1rem);
+  --t-h1: clamp(1.75rem, 1.3rem + 1.4vw, 2.35rem);
+  --t-h2: 1.4375rem;
+  --t-h3: 1.0625rem;
+  --t-body: 0.9375rem; /* 15px - this is a console */
+  --t-sm: 0.8125rem;
+  --t-xs: 0.6875rem; /* the ONE uppercase label size. never prose */
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
+  --s7: 32px; --s8: 40px; --s9: 56px; --s10: 72px; --s11: 96px;
+
+  --r-sm: 5px; --r: 8px; --r-lg: 12px; --r-pill: 999px;
+  --bd: 1px solid var(--rule);
+  --bd-ink: 1.5px solid var(--ink);
+
+  /* elevation is a stamp, not a blur */
+  --press: 2px 2px 0 var(--ink);
+  --press-lg: 3px 3px 0 var(--ink);
+  --press-amber: 3px 3px 0 var(--amber);
+  --lift: 0 1px 2px rgba(18, 18, 18, 0.05), 0 10px 28px -16px rgba(18, 18, 18, 0.22);
+
+  --ease: cubic-bezier(0.2, 0.8, 0.25, 1);
+  --thunk: cubic-bezier(0.34, 1.42, 0.64, 1); /* a stamp hitting paper */
+  --d1: 110ms; --d2: 200ms; --d3: 380ms; --d4: 700ms;
+  --maxw: 1180px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink-2);
+  font: 400 var(--t-body)/1.6 var(--sans);
+  font-feature-settings: "ss01" 1;
+  letter-spacing: -0.003em;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* texture at the edge of perception - you should feel it before you see it */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+body::before {
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 120% 85% at 50% 0%, #000 35%, transparent 100%);
+  mask-image: radial-gradient(ellipse 120% 85% at 50% 0%, #000 35%, transparent 100%);
+}
+body::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)' opacity='.2'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+  opacity: 0.5;
+}
+
+#main, .shell { position: relative; z-index: 1; }
+
+/* --- type roles ----------------------------------------------------------- */
+h1, h2, h3, h4 {
+  color: var(--ink);
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.022em;
+  line-height: 1.12;
+}
+.display {
+  font-family: var(--serif);
+  font-size: var(--t-display);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
+}
+h1 { font-size: var(--t-h1); }
+h2 { font-size: var(--t-h2); letter-spacing: -0.018em; }
+h3 { font-size: var(--t-h3); letter-spacing: -0.01em; }
+p { margin: 0; }
+a { color: var(--ink); text-decoration-color: var(--rule-2); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--amber); }
+
+.lede { font-size: 1.0625rem; line-height: 1.58; color: var(--ink-2); }
+.muted { color: var(--ink-3); }
+.aside { font-family: var(--serif); font-style: italic; color: var(--ink-3); }
+
+/* every number, hash, address and label is mono, tabular, slashed-zero, so
+   "0G" never reads as the letters O-G and a column of figures never shifts */
+.mono, code, kbd, .num, .addr, .hash {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+.num { letter-spacing: -0.01em; }
+.addr, .hash { font-size: var(--t-sm); color: var(--ink-3); word-break: break-all; }
+
+/* the ONE uppercase tracked size in the system */
+.label {
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.085em;
+  color: var(--ink-3);
+}
+
+/* --- layout -------------------------------------------------------------- */
+.shell { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--s6); }
+@media (max-width: 640px) { .shell { padding: 0 var(--s4); } }
+
+.row { display: flex; align-items: center; gap: var(--s3); }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
+.stack { display: flex; flex-direction: column; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1 1 auto; min-width: 0; }
+
+/* asymmetry is allowed - the three-equal-cards row is the most recognisable
+   generated layout there is */
+.docket { display: grid; grid-template-columns: 1.55fr 1fr; gap: var(--s7); align-items: start; }
+@media (max-width: 900px) { .docket { grid-template-columns: 1fr; gap: var(--s6); } }
+
+/* --- sheet: a document laid on the sheet --------------------------------- */
+.sheet {
+  background: var(--card);
+  border: var(--bd);
+  border-radius: var(--r);
+  padding: var(--s6);
+}
+.sheet--pressed { border: var(--bd-ink); box-shadow: var(--press); }
+.sheet--sunken { background: var(--paper-2); border-color: var(--rule); }
+.sheet--tight { padding: var(--s4); }
+
+/* the tear line on a bond receipt, punched at each end */
+.perf {
+  position: relative;
+  border: 0;
+  border-top: 1.5px dashed var(--rule-2);
+  margin: var(--s5) 0;
+  overflow: visible;
+}
+.perf::before, .perf::after {
+  content: "";
+  position: absolute;
+  top: -6.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  border: 1.5px solid var(--rule-2);
+}
+.perf::before { left: -20px; }
+.perf::after { right: -20px; }
+
+/* --- stamp: the only element allowed a rotation -------------------------- */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--mono);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px var(--s2);
+  border: 1.5px solid currentColor;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+}
+.stamp--run   { color: var(--amber-ink); background: var(--amber-wash); }
+.stamp--done  { color: var(--seal-ink);  background: var(--seal-wash); }
+.stamp--block { color: var(--oxide-ink); background: var(--oxide-wash); }
+.stamp--info  { color: var(--indigo-ink);background: var(--indigo-wash); }
+.stamp--todo  { color: var(--ink-3);     background: var(--paper-2); }
+.stamp--cocked { transform: rotate(-2.4deg); }
+
+/* the big stamp that drops onto an outcome */
+.landed {
+  font-family: var(--mono);
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--seal-ink);
+  border: 3px solid var(--seal-ink);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s5);
+  display: inline-block;
+  transform: rotate(-2.4deg);
+  background: var(--seal-wash);
+}
+.landed--no { color: var(--oxide-ink); border-color: var(--oxide-ink); background: var(--oxide-wash); }
+.landed--unknown { color: var(--ink-3); border-color: var(--ink-3); background: var(--paper-2); }
+
+/* --- the highlighter: a marker leaves a band, not a filled rectangle ----- */
+.mark-hl {
+  background-image: linear-gradient(
+    to bottom,
+    transparent 11%,
+    var(--amber-wash) 11%,
+    #fbe4ae 54%,
+    var(--amber-wash) 88%,
+    transparent 91%
+  );
+  padding: 0 0.12em;
+}
+
+/* --- buttons: the press IS the personality ------------------------------- */
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 36px;
+  padding: var(--s2) var(--s4);
+  font: 500 var(--t-body)/1 var(--sans);
+  letter-spacing: -0.008em;
+  color: var(--ink);
+  background: var(--card);
+  border: var(--bd-ink);
+  border-radius: var(--r);
+  box-shadow: var(--press);
+  cursor: pointer;
+  transition: transform var(--d1) var(--ease), box-shadow var(--d1) var(--ease),
+    background-color var(--d1) var(--ease), color var(--d1) var(--ease);
+}
+.btn:hover { transform: translate(-1px, -1px); box-shadow: var(--press-lg); }
+/* pressed INTO the page */
+.btn:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+.btn--primary { background: var(--amber); }
+.btn--primary:hover { background: #ffad17; }
+.btn--ghost { border: var(--bd); box-shadow: none; background: transparent; }
+.btn--ghost:hover { transform: none; box-shadow: none; background: var(--paper-2); border-color: var(--rule-2); }
+.btn--sm { min-height: 30px; padding: var(--s1) var(--s3); font-size: var(--t-sm); }
+.btn[disabled], .btn[aria-disabled="true"] {
+  color: var(--ink-4);
+  background: var(--paper-2);
+  border-color: var(--rule-2);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* focus is a 2px amber ring at 3px offset, globally, and never removed */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+  border-radius: var(--r-sm);
+}
+
+/* --- fields -------------------------------------------------------------- */
+.field { display: flex; flex-direction: column; gap: var(--s2); }
+.input, .select, .textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--s2) var(--s3);
+  font: 400 var(--t-body)/1.5 var(--sans);
+  color: var(--ink);
+  background: var(--card);
+  border: var(--bd);
+  border-radius: var(--r-sm);
+  transition: border-color var(--d1) var(--ease), box-shadow var(--d1) var(--ease);
+}
+.input::placeholder, .textarea::placeholder { color: var(--ink-4); }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--ink); outline-offset: 2px; }
+.textarea { min-height: 112px; resize: vertical; font-family: var(--mono); font-size: var(--t-sm); }
+.input--mono { font-family: var(--mono); font-variant-numeric: tabular-nums slashed-zero; }
+
+/* --- meter: the death block countdown ------------------------------------ */
+.meter {
+  height: 6px;
+  background: var(--paper-3);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.meter > i {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  border-radius: var(--r-pill);
+  transition: width var(--d2) linear;
+}
+.meter--dying > i { background: var(--oxide); }
+.meter--dead > i { background: var(--ink-4); }
+
+/* --- key/value rows ------------------------------------------------------ */
+.kv { display: grid; grid-template-columns: minmax(104px, auto) 1fr; gap: var(--s2) var(--s4); align-items: baseline; }
+.kv dt { font-family: var(--mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.085em; color: var(--ink-3); }
+.kv dd { margin: 0; font-family: var(--mono); font-size: var(--t-sm); color: var(--ink-2); word-break: break-all; font-variant-numeric: tabular-nums slashed-zero; }
+
+/* --- lists --------------------------------------------------------------- */
+.list { list-style: none; margin: 0; padding: 0; }
+.list > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 36px;
+  padding: var(--s2) 0;
+  border-bottom: var(--bd);
+}
+.list > li:last-child { border-bottom: 0; }
+
+/* icons take the colour of their text role and never get their own */
+.ico { width: 16px; height: 16px; flex: 0 0 16px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* --- banner: the honesty notice the hosted demo must carry --------------- */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--oxide-ink);
+  background: var(--oxide-wash);
+  border: 1.5px solid var(--oxide-ink);
+  border-radius: var(--r-sm);
+}
+.banner--info { color: var(--indigo-ink); background: var(--indigo-wash); border-color: var(--indigo-ink); }
+.banner--seal { color: var(--seal-ink); background: var(--seal-wash); border-color: var(--seal-ink); }
+
+/* --- the annotation block: mono, left amber rule ------------------------- */
+.annot {
+  border-left: 3px solid var(--amber);
+  padding: var(--s1) 0 var(--s1) var(--s4);
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+/* --- entrance: at most one, short, with a small stagger ------------------ */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.rise { animation: rise var(--d3) var(--ease) both; }
+.rise-1 { animation-delay: 40ms; }
+.rise-2 { animation-delay: 80ms; }
+.rise-3 { animation-delay: 120ms; }
+
+/* reduced motion is a gentler equivalent, not a broken page: content is all
+   present on load anyway, so collapsing the timing hides nothing */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .btn:hover, .btn:active { transform: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --ink-3: #4a453e; --rule: #bdb29c; }
+}
+
+.sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
