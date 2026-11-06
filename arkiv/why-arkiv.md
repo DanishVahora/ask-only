@@ -145,7 +145,7 @@ names"*. So the question of what we did **not** put there is as much a design de
 | **The plaintext** | nowhere | It exists in the owner's tab for the duration of one answer. It is never written to disk, never logged, never sent to our server. |
 | **The whole document, even to the enclave** | only the lines bearing on the question | Measured: 4 of 12 lines. The employer, PAN, account number and address never entered the enclave at all. |
 | **Any personal data at all** | — | What is indexed on Arkiv is hashes, addresses, enums, counts and block numbers. There is no name, no figure and no identifier of a person in any entity. |
-| **The 0G API key** | the owner's browser | If our server held it, our server could decrypt and ask — and "nobody sees your document" would be false. |
+| **The 0G API key** | the owner's browser: their own, or the one in `.env` on the machine running AskOnly, which `GET /api/zerog/key` hands only to a page on that machine | The browser calls the enclave itself, so no question and no line of the document passes through our server. A key only the server could use would force every answer through it. |
 
 The ciphertext itself **is** on Arkiv, deliberately, because a `bytes` column carries a death block
 and that makes the document structurally expire rather than merely be marked deleted. That is a
