@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ask — AskOnly</title>
+<meta name="description" content="Ask the one question you were permitted. You will never receive the document." />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="css/theme.css" />
+<link rel="stylesheet" href="css/app.css" />
+<link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+
+<svg class="sr" aria-hidden="true"><defs>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8-8 2 2-2 2 2 2-3 3-2-2-2 2"/></symbol>
+</defs></svg>
+
+<div id="modeBanner" class="modebar"></div>
+
+<header class="nav">
+  <div class="shell nav__in">
+    <a class="wordmark" href="/">AskOnly<span class="wordmark__dot">.</span></a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="/#how">How it works</a>
+      <a href="/#limits">What we don't claim</a>
+    </nav>
+    <div class="nav__act">
+      <span class="nav__quiet mono" id="who">not connected</span>
+      <button class="btn btn--sm" id="connect">Connect wallet</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="app">
+  <div class="shell">
+
+    <div class="app__head mt4">
+      <p class="label">Verifier</p>
+      <h1 id="headline">You were given permission to ask one question.</h1>
+      <p class="app__sub">
+        You will not receive the document, and you cannot ask anything else.
+        What you get is an answer, and a receipt you sign for having asked.
+      </p>
+    </div>
+
+    <div class="cols">
+
+      <!-- ─────────────── the capability and the ask ─────────────── -->
+      <section class="panel">
+        <div class="sheet sheet--pressed">
+          <div class="panel__head">
+            <h2>The capability</h2>
+            <span class="stamp stamp--todo" id="grantStamp">loading</span>
+          </div>
+
+          <dl class="kv mt4" id="grantKv">
+            <dt>Grant</dt><dd id="kGrant">—</dd>
+            <dt>Issued to</dt><dd id="kWho">—</dd>
+            <dt>May ask</dt><dd id="kSet">—</dd>
+            <dt>Uses</dt><dd id="kUses">—</dd>
+            <dt>Dies in</dt><dd id="kDies">—</dd>
+          </dl>
+
+          <div class="meter mt4"><i id="lifeBar" style="width:100%"></i></div>
+
+          <hr class="perf" />
+
+          <p class="label">The permitted question</p>
+          <div class="code-line mt4" id="question">—</div>
+
+          <div class="row wrap gap3 mt4">
+            <button class="btn btn--primary" id="askBtn" disabled>Ask it</button>
+            <button class="btn" id="askBad">Ask something else</button>
+          </div>
+          <p class="hint mt4" id="askHint">
+            Connect a wallet first — the answer is released against your signature.
+          </p>
+        </div>
+
+        <!-- ─────────────── the answer ─────────────── -->
+        <div class="sheet sheet--pressed" id="answerCard" hidden>
+          <div class="panel__head">
+            <h2>The answer</h2>
+            <span class="stamp stamp--todo" id="answerStamp">waiting</span>
+          </div>
+
+          <div class="verdict mt4" id="verdict">
+            <div class="waiting" id="waiting" hidden>
+              <span class="waiting__bar"><i></i></span>
+              <span id="waitingText">in the enclave…</span>
+            </div>
+            <div id="verdictBody"></div>
+          </div>
+
+          <hr class="perf" />
+
+          <p class="label">Receipt</p>
+          <dl class="kv mt4">
+            <dt>Asked</dt><dd id="rQuestion">—</dd>
+            <dt>Question hash</dt><dd id="rQHash">—</dd>
+            <dt>Answer hash</dt><dd id="rAHash">—</dd>
+            <dt>Request id</dt><dd id="rReq">—</dd>
+            <dt>Enclave</dt><dd id="rProv">—</dd>
+            <dt>Verified by</dt><dd id="rVerif">—</dd>
+            <dt>Saw</dt><dd id="rSaw">—</dd>
+            <dt>Your signature</dt><dd id="rSig">—</dd>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ─────────────── provenance ─────────────── -->
+      <aside class="panel">
+        <div class="sheet">
+          <div class="panel__head">
+            <h2>Who answered</h2>
+            <span class="stamp stamp--info" id="teeStamp">checking</span>
+          </div>
+          <p class="hint mt4">
+            The same model is served by providers with no enclave at all. AskOnly
+            refuses any provider that is not <span class="mono">TeeML</span>, and
+            discards an answer that comes back from one.
+          </p>
+          <div class="provenance mt4" id="providers"></div>
+        </div>
+
+        <div class="sheet sheet--sunken">
+          <p class="label">What this receipt does and does not prove</p>
+          <ul class="list mt4" style="font-size:var(--t-sm)">
+            <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>The question asked, and the answer given.</span></li>
+            <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Which enclave address answered, checked live against the provider list.</span></li>
+            <li><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>That <em>you</em> asked — you signed for it before you were told.</span></li>
+            <li><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg><span>Not an enclave signature over the answer. 0G's router exposes none, so we do not claim one.</span></li>
+          </ul>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</main>
+
+<script type="module" src="js/ask.js"></script>
+</body>
+</html>

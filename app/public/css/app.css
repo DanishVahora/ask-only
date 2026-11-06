@@ -139,3 +139,26 @@
 .gap4 { gap: var(--s4); }
 .gap5 { gap: var(--s5); }
 .gap6 { gap: var(--s6); }
+
+/* --- the mode bar ---------------------------------------------------------
+   A standing statement about this instance, so it sits above the navigation
+   rather than inside the page. It is also rendered server-side-shaped (a fixed
+   min-height) so that injecting it after first paint cannot shift the page and
+   push a heading under the sticky nav. */
+.modebar { min-height: 44px; border-bottom: var(--bd); background: var(--paper-2); }
+.modebar:empty { min-height: 0; border-bottom: 0; }
+.modebar .banner {
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-bottom-width: 1.5px;
+  padding: var(--s3) var(--s6);
+  max-width: none;
+}
+.modebar .banner code { font-size: var(--t-xs); padding: 1px 5px; background: rgba(18,18,18,.07); border-radius: 3px; }
+
+/* Nothing should ever sit under the sticky navigation when the page is at the
+   top, and an anchor jump should clear it too. */
+html { scroll-padding-top: 72px; }
+.app { padding-top: var(--s6); }

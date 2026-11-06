@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ledger — AskOnly</title>
+<meta name="description" content="Who asked about you, what they were refused, and whether anybody quietly kept a permission alive." />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="css/theme.css" />
+<link rel="stylesheet" href="css/app.css" />
+<link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+
+<svg class="sr" aria-hidden="true"><defs>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+</defs></svg>
+
+<header class="nav">
+  <div class="shell nav__in">
+    <a class="wordmark" href="/">AskOnly<span class="wordmark__dot">.</span></a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="/vault.html">Vault</a>
+      <a href="/ledger.html">Ledger</a>
+      <a href="/#how">How it works</a>
+    </nav>
+    <div class="nav__act">
+      <button class="btn btn--ghost btn--sm" id="refresh">Refresh</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="app">
+  <div class="shell">
+
+    <div class="app__head">
+      <p class="label">Your ledger</p>
+      <h1>Who asked about you.</h1>
+      <p class="app__sub">
+        Every question that was answered, every question that was refused, and —
+        the part that matters — whether anyone quietly bought a permission more life.
+      </p>
+    </div>
+
+    <div class="cols">
+
+      <section class="panel">
+        <div class="sheet sheet--pressed">
+          <div class="panel__head">
+            <h2>Answered</h2>
+            <span class="stamp stamp--todo" id="nAnswered">0</span>
+          </div>
+          <div id="answered" class="mt4"><p class="empty">Nothing yet.</p></div>
+        </div>
+
+        <div class="sheet sheet--pressed">
+          <div class="panel__head">
+            <h2>Refused</h2>
+            <span class="stamp stamp--todo" id="nRefused">0</span>
+          </div>
+          <p class="hint mt4">
+            A refused question is evidence too. This is what somebody tried to ask
+            that they were never permitted to.
+          </p>
+          <div id="refused" class="mt4"><p class="empty">Nothing refused.</p></div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="sheet sheet--pressed">
+          <div class="panel__head">
+            <h2>Retention monitor</h2>
+            <span class="stamp stamp--info" id="watchStamp">idle</span>
+          </div>
+          <p class="hint mt4">
+            Arkiv emits an event when a record is <em>extended</em> and nothing at
+            all when one dies. So silence is death, and keeping a permission alive
+            is the act that leaves a trace.
+          </p>
+
+          <div class="banner banner--info mt4">
+            <div>
+              The event stream is <strong>chain-wide</strong> — every entity on the
+              network, with no owner or schema filter. Measured here:
+              <span class="mono">45 events in 24s, 44 of them strangers'</span>.
+              Everything below is filtered to your wallet, which is why it is
+              trustworthy and why an unfiltered monitor would not be.
+            </div>
+          </div>
+
+          <dl class="kv mt4">
+            <dt>Seen</dt><dd id="wSeen">0</dd>
+            <dt>Yours</dt><dd id="wKept">0</dd>
+            <dt>Dropped</dt><dd id="wDropped">0</dd>
+          </dl>
+
+          <div id="extensions" class="mt4"><p class="empty">No extensions of yours observed.</p></div>
+        </div>
+
+        <div class="sheet sheet--sunken">
+          <p class="label">The honest reading</p>
+          <p class="hint mt4">
+            This is an observation over a window, not a proof of absence for all
+            time. What it shows is that during the window we watched, nobody
+            extended your permissions. A record that simply expired emits nothing,
+            which is the whole point — you cannot quietly keep something alive
+            without signing for it.
+          </p>
+        </div>
+      </aside>
+
+    </div>
+  </div>
+</main>
+
+<script type="module" src="js/ledger.js"></script>
+</body>
+</html>

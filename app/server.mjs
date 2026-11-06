@@ -33,6 +33,7 @@ import {
   putVault, issueGrant, liveGrant, grantsOf, vaultsOf, vaultCipher,
   recordAccess, recordRefusal, accessesOf, refusalsOf, spendGrant, extendGrant, revokeGrant,
 } from "../src/arkiv/ledger.mjs";
+import { watchExtensions } from "../src/arkiv/watch.mjs";
 import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
 import { QUESTION_SETS, canonicalQuestion, minimalExtract, systemPrompt, userPrompt, sha256hex } from "../src/ask/questions.mjs";
 import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVIDER, MIN_MAX_TOKENS, baseUrl } from "../src/ask/enclave.mjs";
@@ -40,7 +41,27 @@ import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVID
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(import.meta.dirname, "..");
 const PUBLIC = path.join(ROOT, "app", "public");
-const PORT = Number(process.env.PORT || 4319);
+/**
+ * 5173, and it is NOT an arbitrary choice.
+ *
+ * 0G's router allowlists browser origins by EXACT ORIGIN, port included. Probed
+ * 2026-11-06 against /v1/chat/completions with a CORS preflight:
+ *
+ *   http://localhost:5173  -> 204 + Access-Control-Allow-Origin: http://localhost:5173
+ *   http://localhost:4319  -> 403
+ *   http://localhost:5174  -> 403      8080, 8000, 4200, 1420 -> 403
+ *   https://pc.0g.ai       -> 204
+ *
+ * So 5173 (Vite's default, which 0G evidently allowlisted for developers) is
+ * the ONLY local origin a browser can call the enclave from. Serve AskOnly on
+ * any other port and the browser-direct path silently dies and you fall back to
+ * relaying - which is precisely the trusted middleman this design exists to avoid.
+ *
+ * A status code alone is not proof here: checking only that the preflight
+ * returned 204 would have missed that the response must also carry the
+ * Access-Control-Allow-Origin header back.
+ */
+const PORT = Number(process.env.PORT || 5173);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -64,6 +85,40 @@ try {
   ctx = clients(acct);
 } catch (e) {
   bootError = scrub(e);
+}
+
+/**
+ * The retention monitor, running for as long as this process does.
+ *
+ * `watchEntityEvents` is a CHAIN-WIDE firehose with no owner, key or schema
+ * filter. Measured on this chain: 45 ExpiryExtended events in 24 seconds, 44 of
+ * which belonged to nine unrelated wallets. An unfiltered monitor would present
+ * strangers' retention as the owner's - which is not merely wrong, it is an
+ * accusation. So we filter to our wallet and we report the drop count, because
+ * the number of things we threw away is itself the evidence that filtering
+ * was necessary.
+ */
+const retention = { seen: 0, kept: 0, dropped: 0, extensions: [], since: Date.now(), error: null };
+let unwatch = null;
+if (ctx && acct) {
+  try {
+    const w = watchExtensions(
+      ctx.reader,
+      (e) => {
+        retention.extensions.unshift(e);
+        if (retention.extensions.length > 50) retention.extensions.pop();
+      },
+      (e) => {
+        retention.error = e;
+      },
+      { owners: [acct.address] },
+    );
+    unwatch = w.unwatch;
+    // The stats object lives inside watchExtensions; mirror it on each read.
+    retention._stats = w.stats;
+  } catch (e) {
+    retention.error = scrub(e);
+  }
 }
 
 const json = (res, code, body) => {
@@ -415,6 +470,26 @@ const routes = {
     } catch (e) {
       json(res, 502, { error: scrub(e) });
     }
+  },
+
+  "GET /api/retention": async (req, res) => {
+    const s = retention._stats ?? { seen: 0, kept: 0, dropped: 0 };
+    json(res, 200, {
+      watching: Boolean(unwatch),
+      owner: acct?.address ?? null,
+      since: retention.since,
+      windowMs: Date.now() - retention.since,
+      seen: s.seen,
+      kept: s.kept,
+      dropped: s.dropped,
+      extensions: retention.extensions,
+      error: retention.error,
+      // Stated as what it is: an observation over a window, not a proof for all time.
+      statement:
+        retention.extensions.length === 0
+          ? "No extension of your permissions was observed in this window. A permission that simply expires emits nothing at all."
+          : `${retention.extensions.length} of your permissions were extended. Each extension is a signed, public, timestamped act.`,
+    });
   },
 
   "GET /api/accesses": async (req, res, url) => {
