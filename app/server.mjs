@@ -40,7 +40,7 @@ import {
   requireSignature, SignatureError, clientSpec,
 } from "../src/auth/typed.mjs";
 import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
-import { QUESTION_SETS, canonicalQuestion, minimalExtract, systemPrompt, userPrompt, sha256hex } from "../src/ask/questions.mjs";
+import { TOPICS } from "../src/ask/questions.mjs";
 import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVIDER, MIN_MAX_TOKENS, baseUrl } from "../src/ask/enclave.mjs";
 
 const require = createRequire(import.meta.url);
@@ -240,7 +240,10 @@ const routes = {
       chain,
       arkiv,
       questionSets: Object.fromEntries(
-        Object.entries(QUESTION_SETS).map(([k, v]) => [k, { label: v.label, param: v.param, allowsBand: v.allowsBand }]),
+        Object.entries(TOPICS).map(([k, v]) => [
+          k,
+          { label: v.label, blurb: v.blurb, examples: v.examples },
+        ]),
       ),
       wiringError: wiringError ?? null,
       faucet: FAUCET,
@@ -362,7 +365,7 @@ const routes = {
     if (!ctx) return json(res, 503, { error: bootError });
     try {
       const b = await readBody(req);
-      if (!QUESTION_SETS[b.questionSet]) return json(res, 400, { error: "unknown question set" });
+      if (!TOPICS[b.questionSet]) return json(res, 400, { error: "unknown question set" });
 
       // The owner signed these exact terms. Verify before spending our gas on
       // them - this is what makes the paymaster arrangement honest.
@@ -753,7 +756,12 @@ const server = http.createServer(async (req, res) => {
   const handler = routes[key];
   try {
     if (handler) await handler(req, res, url);
-    else await serveStatic(req, res, url);
+    // An /api path that does not exist must say so. Falling through to the
+    // single-page fallback returned the app shell with a 200, so a removed or
+    // mistyped endpoint looked like it was working.
+    else if (url.pathname.startsWith("/api/")) {
+      json(res, 404, { error: `no such endpoint: ${req.method} ${url.pathname}` });
+    } else await serveStatic(req, res, url);
   } catch (e) {
     if (!res.headersSent) json(res, 500, { error: scrub(e) });
   }
