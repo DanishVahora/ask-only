@@ -12,19 +12,53 @@ import {
 } from "../lib/askonly.js";
 import { ConnectButton } from "../components/Shell.jsx";
 import Inbox from "../components/Inbox.jsx";
+import RoleGuide from "../components/RoleGuide.jsx";
 import Countdown from "../components/Countdown.jsx";
 
 function Gate() {
   return (
-    <div className="mx-auto max-w-[520px] px-5 py-28 text-center">
-      <h1 className="text-[clamp(2rem,1.4rem+2.2vw,3rem)]">
-        Connect a wallet to open <span className="italic">your</span> vault.
-      </h1>
-      <p className="mx-auto mt-6 max-w-[38ch] text-[0.9375rem] leading-relaxed text-ink-70">
-        Your address is your identity here. Documents and permissions belong to it, not to us.
-      </p>
-      <div className="mt-8 flex justify-center">
-        <ConnectButton size="lg" />
+    <div className="mx-auto max-w-[760px] px-5 py-20">
+      <div className="text-center">
+        <h1 className="text-[clamp(2rem,1.4rem+2.2vw,3rem)]">
+          Connect a wallet to open <span className="italic">your</span> vault.
+        </h1>
+        <p className="mx-auto mt-6 max-w-[42ch] text-[0.9375rem] leading-relaxed text-ink-70">
+          Your address is your identity here. Documents and permissions belong to it, not to us.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <ConnectButton size="lg" />
+        </div>
+      </div>
+
+      {/* Two people, one of whom can be you in a second account. Saying so
+          here saves everyone the confusion of looking for the other half. */}
+      <div className="mt-16 rounded-xl border border-line bg-cream-2 p-6">
+        <p className="eyebrow text-center">There are two people in this</p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-[12px] border-[1.6px] border-ink bg-paper p-5">
+            <span className="tag tag-on">you · owner</span>
+            <p className="mt-3 text-[0.9375rem] font-semibold">This page</p>
+            <ul className="mt-2 space-y-1.5 text-[0.8125rem] leading-snug text-ink-70">
+              <li>Seal a document — it encrypts here</li>
+              <li>Issue a permission naming their address</li>
+              <li><strong className="font-semibold text-ink">Answer their questions</strong></li>
+            </ul>
+          </div>
+          <div className="rounded-[12px] border border-line-2 bg-paper p-5">
+            <span className="tag tag-warn">them · verifier</span>
+            <p className="mt-3 text-[0.9375rem] font-semibold">The link you send them</p>
+            <ul className="mt-2 space-y-1.5 text-[0.8125rem] leading-snug text-ink-70">
+              <li>Opens it with <em>their own</em> wallet</li>
+              <li>Signs, and asks the one question</li>
+              <li>Waits — they cannot answer it themselves</li>
+            </ul>
+          </div>
+        </div>
+        <p className="mt-6 border-t border-line pt-5 text-[0.8125rem] leading-relaxed text-ink-70">
+          <strong className="font-semibold text-ink">Trying it alone?</strong> Add a second account
+          in MetaMask. Issue the permission to that second address, switch to it to ask, then switch
+          back to answer. The page follows whichever account is selected.
+        </p>
       </div>
     </div>
   );
@@ -157,6 +191,7 @@ Net Pay: 62,960`,
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-28 pt-10">
+      <RoleGuide role="owner" />
       <Inbox />
 
       <div className="grid gap-10 md:grid-cols-2">

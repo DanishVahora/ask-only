@@ -75,9 +75,11 @@ export default function Shell({ children }) {
   const landing = pathname === "/";
 
   const tabs = [
-    { to: "/vault", label: "Vault" },
-    { to: "/ask", label: "Ask" },
-    { to: "/ledger", label: "Ledger" },
+    // Named for the role, not the noun: "Ask" alone does not tell you that it
+    // is the other person's screen.
+    { to: "/vault", label: "My vault", hint: "owner" },
+    { to: "/ask", label: "Asked of me", hint: "verifier" },
+    { to: "/ledger", label: "Ledger", hint: "owner" },
   ];
 
   return (

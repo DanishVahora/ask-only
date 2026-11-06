@@ -10,6 +10,7 @@ import clsx from "clsx";
 import { api, sha256hex, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
 import { ConnectButton } from "../components/Shell.jsx";
 import Countdown from "../components/Countdown.jsx";
+import RoleGuide from "../components/RoleGuide.jsx";
 
 /**
  * The verifier's screen.
@@ -97,6 +98,7 @@ export default function Ask() {
 
   return (
     <div className="mx-auto max-w-[760px] px-5 pb-28 pt-10">
+      <RoleGuide role="verifier" />
       <p className="eyebrow">Verifier</p>
       <h1 className="mt-3 text-[clamp(1.75rem,1.3rem+1.8vw,2.5rem)]">
         You may ask one question.<br />
