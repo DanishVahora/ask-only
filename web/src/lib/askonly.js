@@ -69,7 +69,8 @@ export async function encryptDocument(plaintext, passphrase) {
   const cipher = new Uint8Array(salt.length + sealed.length);
   cipher.set(salt, 0);
   cipher.set(sealed, salt.length);
-  if (cipher.length > 128 * 1024) {
+  // Arkiv takes 128 KiB per write, and the owner's signatures ride in the same write.
+  if (cipher.length > 128 * 1024 - 256) {
     throw new Error(`this encrypts to ${(cipher.length / 1024).toFixed(1)} KiB; Arkiv allows 128 KiB per write`);
   }
   return {
@@ -114,7 +115,19 @@ export async function decryptDocument(cipherHex, ivB64, passphrase) {
 export const DOMAIN = { name: "AskOnly", version: "1" };
 
 export const TYPES = {
+  // No question count. A reviewer asks as often as they like while it lasts.
   Grant: [
+    { name: "vaultId", type: "string" },
+    { name: "verifier", type: "address" },
+    { name: "questionSet", type: "string" },
+    { name: "question", type: "string" },
+    { name: "diesAt", type: "uint256" },
+    { name: "sessionKey", type: "address" },
+    { name: "statement", type: "string" },
+  ],
+  // Grants issued before 2026-11-07 carried a count (usesAllowed > 0 on the record),
+  // and were signed under this. Only for checking those.
+  GrantV1: [
     { name: "vaultId", type: "string" },
     { name: "verifier", type: "address" },
     { name: "questionSet", type: "string" },
@@ -122,6 +135,20 @@ export const TYPES = {
     { name: "usesAllowed", type: "uint256" },
     { name: "diesAt", type: "uint256" },
     { name: "sessionKey", type: "address" },
+    { name: "statement", type: "string" },
+  ],
+  // The wallet letting a key in this browser sign for it for a week. Build the
+  // message with sessionMessage() below, so `expires` matches what the server rebuilds.
+  Session: [
+    { name: "sessionKey", type: "address" },
+    { name: "expires", type: "string" },
+    { name: "diesAt", type: "uint256" },
+    { name: "statement", type: "string" },
+  ],
+  // Sealing a document: sha256 is the ciphertext hash encryptDocument returns.
+  Seal: [
+    { name: "sha256", type: "string" },
+    { name: "label", type: "string" },
     { name: "statement", type: "string" },
   ],
   Request: [
@@ -177,7 +204,40 @@ export const STATEMENTS = {
     "I am deleting this document. Anyone who could ask about it can no longer ask.",
   revoke: "I am ending this permission. They can ask nothing more.",
   askKey: "I let this browser sign my questions under this one permission, until it expires.",
+  session: "I let this browser sign for me on AskOnly until this expires. It cannot move any funds.",
+  seal: "I am adding this sealed document to AskOnly.",
 };
+
+/* ------------------------------------------------------------- sessions -- */
+
+/** A browser signs for its wallet for a week. The server allows a day's slack. */
+export const SESSION_DAYS = 7;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad2 = (n) => String(n).padStart(2, "0");
+/** "14 Nov 2026, 02:50 UTC". Mirrors src/auth/typed.mjs byte for byte: the server
+ *  rebuilds this from diesAt, and a different string is a different signature. */
+export function sessionExpires(diesAtSeconds) {
+  const d = new Date(Number(diesAtSeconds) * 1000);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
+}
+
+/** The Session message the wallet signs. diesAt is in SECONDS. */
+export function sessionMessage({ sessionKey, diesAt }) {
+  return {
+    sessionKey: getAddress(sessionKey),
+    expires: sessionExpires(diesAt),
+    diesAt: BigInt(diesAt),
+    statement: STATEMENTS.session,
+  };
+}
+
+/** The Seal message for sealing a document. */
+export const sealMessage = ({ sha256, label }) => ({
+  sha256: String(sha256),
+  label: String(label),
+  statement: STATEMENTS.seal,
+});
 
 /* -------------------------------------------------------------- enclave -- */
 
@@ -353,38 +413,75 @@ export async function askEnclaveDirect(prepared, apiKey, { signal } = {}) {
 const NO_KEY = "0x0000000000000000000000000000000000000000";
 const holds = (p) => p.then((v) => v === true, () => false);
 
+const isSig = (sig) => /^0x[0-9a-f]+$/i.test(String(sig ?? ""));
+
+/**
+ * Did `wallet` let `key` sign for it, in a session that was still running at `at`
+ * (ms)? Records signed by a browser key carry the wallet's Session next to it.
+ */
+function sessionHolds(wallet, key, diesAtSeconds, sig, at) {
+  const diesAt = Number(diesAtSeconds);
+  if (!isSig(sig) || !Number.isSafeInteger(diesAt) || diesAt <= 0) return Promise.resolve(false);
+  if (Number.isFinite(at) && at > diesAt * 1000) return Promise.resolve(false);
+  let message;
+  try {
+    message = sessionMessage({ sessionKey: key, diesAt });
+  } catch {
+    return Promise.resolve(false);
+  }
+  return holds(
+    verifyTypedData({ address: wallet, domain: DOMAIN, types: { Session: TYPES.Session }, primaryType: "Session", message, signature: sig }),
+  );
+}
+
 /**
  * Did this owner really sign these terms?
  *
  * The owner's browser answers by itself, so it must not take the server's word for
  * what a permission allows. A server that could invent a permission, or widen its
  * topic, could have this browser answer anything about the document.
+ *
+ * Signed by the owner's wallet, or by a browser key with the wallet's Session over it
+ * (ownerKey on the record). Old grants with a count were signed under GrantV1.
  */
-export function signedByOwner(grant, owner) {
-  if (!/^0x[0-9a-f]+$/i.test(String(grant?.ownerSig ?? ""))) return Promise.resolve(false);
+export async function signedByOwner(grant, owner) {
+  if (!isSig(grant?.ownerSig)) return false;
+  const counted = Number(grant.usesAllowed) > 0;
   let message;
+  let wallet;
   try {
+    wallet = getAddress(owner);
     message = {
       vaultId: String(grant.vaultId),
       verifier: getAddress(grant.verifier),
       questionSet: String(grant.questionSet),
       question: String(grant.note),
-      usesAllowed: BigInt(grant.usesAllowed),
+      ...(counted ? { usesAllowed: BigInt(grant.usesAllowed) } : {}),
       diesAt: BigInt(grant.diesAt),
       sessionKey: getAddress(grant.sessionKey || NO_KEY),
       statement: STATEMENTS.grant,
     };
   } catch {
-    return Promise.resolve(false);
+    return false;
   }
-  return holds(
-    verifyTypedData({ address: owner, domain: DOMAIN, types: { Grant: TYPES.Grant }, primaryType: "Grant", message, signature: grant.ownerSig }),
-  );
+  const types = { Grant: counted ? TYPES.GrantV1 : TYPES.Grant };
+  const by = (address) =>
+    holds(verifyTypedData({ address, domain: DOMAIN, types, primaryType: "Grant", message, signature: grant.ownerSig }));
+  if (!grant.ownerKey) return by(wallet);
+  let key;
+  try {
+    key = getAddress(grant.ownerKey);
+  } catch {
+    return false;
+  }
+  if (!(await by(key))) return false;
+  return sessionHolds(wallet, key, grant.ownerKeyDiesAt, grant.ownerKeySig, Number(grant.issuedAt));
 }
 
 /**
  * Did the person this permission names really ask exactly this, when it says? Signed by
- * their wallet, or by a key their wallet let sign under exactly this permission.
+ * their wallet; by a browser key with their wallet's Session over it (askKeyDiesAt > 0);
+ * or by a key their wallet let sign under exactly this permission (an AskKey).
  */
 export async function signedByAsker(request, grant) {
   if (!/^0x[0-9a-f]+$/i.test(String(request?.askerSig ?? ""))) return false;
@@ -405,6 +502,9 @@ export async function signedByAsker(request, grant) {
     return false;
   }
   if (!(await by(key, request.askerSig))) return false;
+  if (Number(request.askKeyDiesAt) > 0) {
+    return sessionHolds(getAddress(grant.verifier), key, request.askKeyDiesAt, request.askKeySig, Number(request.askedAt));
+  }
   return holds(
     verifyTypedData({
       address: getAddress(grant.verifier),

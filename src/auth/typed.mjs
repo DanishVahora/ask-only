@@ -70,7 +70,8 @@ export const recordId = (prefix, types, primaryType, message) =>
 
 /**
  * A grant. Signed by the data principal. This is the capability itself:
- * who may ask, what they may ask, how often, and until when.
+ * who may ask, what they may ask, and until when. There is no count: a reviewer
+ * may ask as often as they like while it lasts, and the server rate-limits instead.
  */
 export const GrantTypes = {
   Grant: [
@@ -78,11 +79,76 @@ export const GrantTypes = {
     { name: "verifier", type: "address" },
     { name: "questionSet", type: "string" },
     { name: "question", type: "string" },
-    { name: "usesAllowed", type: "uint256" },
     { name: "diesAt", type: "uint256" },
     // The key in the owner's browser that may answer under this permission. One
     // signature grants the right and starts the answering, for exactly that long.
     { name: "sessionKey", type: "address" },
+    { name: "statement", type: "string" },
+  ],
+};
+
+/**
+ * The grant as it was signed until 2026-11-07, with a question count. Kept so the
+ * permissions already issued under it still verify, and so a tab holding an older
+ * bundle is checked against what it actually signed. A grant record with
+ * usesAllowed > 0 was signed under this type.
+ */
+export const GrantTypesV1 = {
+  Grant: [
+    { name: "vaultId", type: "string" },
+    { name: "verifier", type: "address" },
+    { name: "questionSet", type: "string" },
+    { name: "question", type: "string" },
+    { name: "usesAllowed", type: "uint256" },
+    { name: "diesAt", type: "uint256" },
+    { name: "sessionKey", type: "address" },
+    { name: "statement", type: "string" },
+  ],
+};
+
+/**
+ * A SESSION: the wallet letting one key, generated in this browser, sign for it on
+ * AskOnly until it expires. One wallet popup a week instead of one per document,
+ * reviewer, ending and question.
+ *
+ * What it can sign: the same typed messages the wallet would, under the AskOnly
+ * domain, which the server only ever turns into AskOnly records. It is not a
+ * transaction key and holds nothing, so it cannot move funds. Grants and questions
+ * store this signature next to the key's, so they still trace back to the wallet.
+ *
+ * `expires` is diesAt written out in UTC, so the one popup is readable. The server
+ * rebuilds it from diesAt and refuses a session whose text says something else.
+ */
+export const SessionTypes = {
+  Session: [
+    { name: "sessionKey", type: "address" },
+    { name: "expires", type: "string" },
+    { name: "diesAt", type: "uint256" },
+    { name: "statement", type: "string" },
+  ],
+};
+
+/** A session lasts a week. The server allows a day of slack for clocks. */
+export const SESSION_DAYS = 7;
+export const MAX_SESSION_MS = (SESSION_DAYS + 1) * 86_400_000;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad2 = (n) => String(n).padStart(2, "0");
+/** "14 Nov 2026, 02:50 UTC". Mirrored in web/src/lib/askonly.js, byte for byte. */
+export function sessionExpires(diesAtSeconds) {
+  const d = new Date(Number(diesAtSeconds) * 1000);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())} UTC`;
+}
+
+/**
+ * SEALING a document. Sealing used to be unsigned, so anyone could put a document
+ * in anyone's list. The owner signs the ciphertext's hash and its name; the server
+ * hashes the bytes it was sent and refuses a mismatch.
+ */
+export const SealTypes = {
+  Seal: [
+    { name: "sha256", type: "string" },
+    { name: "label", type: "string" },
     { name: "statement", type: "string" },
   ],
 };
@@ -206,21 +272,38 @@ export const STATEMENTS = {
     "I am deleting this document. Anyone who could ask about it can no longer ask.",
   revoke: "I am ending this permission. They can ask nothing more.",
   askKey: "I let this browser sign my questions under this one permission, until it expires.",
+  session: "I let this browser sign for me on AskOnly until this expires. It cannot move any funds.",
+  seal: "I am adding this sealed document to AskOnly.",
 };
 
 const NO_KEY = "0x0000000000000000000000000000000000000000";
 
+/** With usesAllowed, the old counted grant (GrantTypesV1); without it, today's. */
 export function grantMessage({ vaultId, verifier, questionSet, question, usesAllowed, diesAt, sessionKey }) {
+  const counted = usesAllowed !== undefined && usesAllowed !== null;
   return {
     vaultId: String(vaultId),
     verifier: getAddress(verifier),
     questionSet: String(questionSet),
     question: String(question),
-    usesAllowed: BigInt(usesAllowed),
+    ...(counted ? { usesAllowed: BigInt(usesAllowed) } : {}),
     diesAt: BigInt(diesAt),
     sessionKey: getAddress(sessionKey || NO_KEY),
     statement: STATEMENTS.grant,
   };
+}
+
+export function sessionMessage({ sessionKey, diesAt }) {
+  return {
+    sessionKey: getAddress(sessionKey),
+    expires: sessionExpires(diesAt),
+    diesAt: BigInt(diesAt),
+    statement: STATEMENTS.session,
+  };
+}
+
+export function sealMessage({ sha256, label }) {
+  return { sha256: String(sha256), label: String(label), statement: STATEMENTS.seal };
 }
 
 export function presenceMessage({ grantId, at }) {
@@ -283,9 +366,12 @@ export function answerMessage({ requestId, grantId, questionHash, answerHash, en
 }
 
 export class SignatureError extends Error {
-  constructor(message) {
+  /** `code` tells the browser what to do: "session-expired" and "session-invalid"
+   *  mean drop this browser's key and ask the wallet for a new session. */
+  constructor(message, code = null) {
     super(message);
     this.name = "SignatureError";
+    this.code = code;
   }
 }
 
@@ -348,11 +434,70 @@ export async function requireSignature({ address, types, primaryType, message, s
   );
 }
 
+/**
+ * The party behind a signed action: their wallet directly, or a browser key their
+ * wallet let sign for them (a Session). Either way the action's own signature is
+ * checked over the exact message, so a session changes who holds the pen, not what
+ * gets written.
+ *
+ * Returns the party, and what a record needs so anyone can trace it back to them:
+ * the key, when its session ends, and the wallet's signature over that session.
+ */
+export async function requireParty({ address, types, primaryType, message, signature, session }) {
+  if (!session) {
+    const party = await requireSignature({ address, types, primaryType, message, signature });
+    return { party, key: "", keyDiesAt: 0, keySig: null };
+  }
+  const key = await requireSessionKey({ party: address, session });
+  // The action itself must come from the key the session names.
+  await requireSignature({ address: key.key, types, primaryType, message, signature });
+  return key;
+}
+
+/**
+ * Is this a live session, signed by `party`'s wallet? Returns the same shape as
+ * requireParty. Used alone where the action's signature is checked elsewhere.
+ */
+export async function requireSessionKey({ party, session }) {
+  const diesAt = Number(session?.diesAt);
+  if (!Number.isSafeInteger(diesAt) || !session?.sessionKey || !session?.sig) {
+    throw new SignatureError("this browser's sign-in is incomplete, so sign in again", "session-invalid");
+  }
+  const left = diesAt * 1000 - Date.now();
+  if (left <= 0) {
+    throw new SignatureError("this browser's sign-in has expired, so sign in again", "session-expired");
+  }
+  if (left > MAX_SESSION_MS) {
+    throw new SignatureError(`a browser can sign for you for ${SESSION_DAYS} days at most`, "session-invalid");
+  }
+  let message;
+  try {
+    message = sessionMessage({ sessionKey: session.sessionKey, diesAt });
+  } catch {
+    throw new SignatureError("this browser's sign-in names no key, so sign in again", "session-invalid");
+  }
+  let signer;
+  try {
+    signer = await requireSignature({
+      address: party,
+      types: SessionTypes,
+      primaryType: "Session",
+      message,
+      signature: session.sig,
+    });
+  } catch (e) {
+    throw new SignatureError(`this browser's sign-in does not check out: ${e.message}`, "session-invalid");
+  }
+  return { party: signer, key: message.sessionKey, keyDiesAt: diesAt, keySig: session.sig };
+}
+
 /** Everything a browser needs to produce a matching signature. */
 export const clientSpec = {
   domain,
   types: {
     Grant: GrantTypes.Grant,
+    Session: SessionTypes.Session,
+    Seal: SealTypes.Seal,
     Request: RequestTypes.Request,
     Answer: AnswerTypes.Answer,
     Delegation: DelegationTypes.Delegation,
