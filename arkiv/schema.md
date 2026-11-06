@@ -30,9 +30,13 @@ browser. What is indexed is hashes, addresses, enums, counts and block numbers.
 | `label` | `str` | | owner-facing name, e.g. `Payslip — Oct 2026` |
 | `iv` | `str` | | base64 AES-GCM nonce |
 | `cipher` | `bytes` | | the document. Encrypted in the browser, never decrypted server-side |
+| `ownerSig` | `bytes` | | EIP-712 `Seal` over (`sha256`, `label`), by the owner's wallet or by `ownerKey`. The server hashes the bytes it was sent and refuses a mismatch. Empty on documents sealed before sealing was signed |
+| `ownerKey` | `str` | | the browser key that signed for the owner, or empty if their wallet did |
+| `ownerKeyDiesAt` | `u64` | | seconds, when that key's `Session` ends; `0` with no key |
+| `ownerKeySig` | `bytes` | | the owner's wallet over that `Session`, which traces `ownerSig` back to them |
 
 `$expiresAt`: owner's choice, default 180 days.
-`cipher` is capped by Arkiv at **128 KiB per create**, which fits a compressed encrypted payslip.
+`cipher` is capped by Arkiv at **128 KiB per create**, the signatures included, which fits a compressed encrypted payslip.
 A `bytes` column can never be indexed, filtered or sorted — so documents cannot be queried by
 content even by accident.
 
@@ -51,9 +55,9 @@ job; past `$expiresAt` the network stops returning it and every operation on it 
 | `verifier` | `addr` | ✓ | who may ask |
 | `verifierName` | `str` | ✓ | the ENS name, e.g. `landlord.eth` |
 | `questionSet` | `str` | ✓ | `income` `identity` `tenancy` `employment` |
-| `state` | `str` | ✓ | `live` `spent` `revoked` |
-| `usesAllowed` | `u64` | ✓ | how many times it may be used |
-| `usesSpent` | `u64` | ✓ | how many times it has been |
+| `state` | `str` | ✓ | `live` `revoked`, and `spent` on an old counted grant that ran out |
+| `usesAllowed` | `u64` | ✓ | `0`: no count, the reviewer asks as often as they like while it lasts. Grants before 2026-11-07 carried one, signed under the old `Grant` type, and still hold to it |
+| `usesSpent` | `u64` | ✓ | questions answered or turned down |
 | `issuedAt` | `u64` | ✓ | ms |
 | `diesAt` | `u64` | ✓ | ms, **exactly as the owner signed it**. `$expiresAt` follows it to the next 2s block |
 | `roleBit` | `u256` | | the ENSv2 EAC role the verifier must hold |
@@ -61,11 +65,16 @@ job; past `$expiresAt` the network stops returning it and every operation on it 
 | `threshold` | `str` | | the figure inside the question — never the document's |
 | `note` | `str` | | the owner's own words for what may be asked, or `anything in this document` |
 | `sessionKey` | `str` | | the key in the owner's browser that may answer under this grant, named in their signature |
-| `ownerSig` | `bytes` | | EIP-712 signature of the principal over the grant terms |
+| `ownerSig` | `bytes` | | EIP-712 signature over the grant terms, by the principal's wallet or by `ownerKey` |
+| `ownerKey` | `str` | | the browser key that signed for the owner, or empty if their wallet did |
+| `ownerKeyDiesAt` | `u64` | | seconds, when that key's `Session` ends; `0` with no key |
+| `ownerKeySig` | `bytes` | | the owner's wallet over that `Session`, which traces `ownerSig` back to them |
 
 `$expiresAt`: **required at creation** and is the whole permission.
 `state` is an explicit enum because the network has **no `NOT` and no `!=`** — "not yet spent"
-cannot be expressed, so `spent` is written at the moment the last use is consumed.
+cannot be expressed, so on an old counted grant `spent` is written at the moment the last use is consumed.
+With no count, what stops a runaway script is the server: at most 10 questions waiting on one
+permission, and 30 in 10 minutes.
 
 ---
 
@@ -144,8 +153,9 @@ cannot produce an answer — they can only **request** one, and wait.
 | `accessId` | `str` | ✓ | the receipt, once answered |
 | `question` | `str` | | verbatim |
 | `askerSig` | `bytes` | | **EIP-712, signed before being told anything**, by the verifier's wallet or by `askerKey` |
-| `askerKey` | `str` | | a key the verifier's wallet let sign questions under this one permission, or empty |
-| `askKeySig` | `bytes` | | the verifier's wallet over that `AskKey` (grantId, key, the grant's diesAt), which traces `askerSig` back to them |
+| `askerKey` | `str` | | a browser key the verifier's wallet let sign for them, or empty |
+| `askKeySig` | `bytes` | | the verifier's wallet over that key, which traces `askerSig` back to them: a `Session` when `askKeyDiesAt` is set, otherwise an `AskKey` (grantId, key, the grant's diesAt) |
+| `askKeyDiesAt` | `u64` | | seconds, when the `Session` ends; `0` for an `AskKey` |
 
 `$expiresAt`: 7 days, so the person who asked can still read what came back after the permission ends.
 A question can no longer be answered once its permission has ended: the inbox hides it and `POST /api/answer`
@@ -162,8 +172,8 @@ The queried fields are `owner` + `state` (the inbox) and `requestId` (what the v
 
 | Entity | `$owner` | Who authored it | How that is proven |
 |---|---|---|---|
-| `vault` | writing wallet | the data principal | ciphertext is useless without their passphrase |
-| `grant` | writing wallet | the data principal | `ownerSig`, EIP-712 over the exact terms |
+| `vault` | writing wallet | the data principal | `ownerSig`, EIP-712 `Seal` over the ciphertext hash and name. And the ciphertext is useless without their passphrase |
+| `grant` | writing wallet | the data principal | `ownerSig`, EIP-712 over the exact terms, from their wallet or from `ownerKey` with `ownerKeySig` from their wallet |
 | `request` | writing wallet | the verifier | `askerSig`, from their wallet, or from `askerKey` with `askKeySig` from their wallet |
 | `access` | writing wallet | the data principal's device | `askerSig` carries the answering key's EIP-712 signature, and the grant names that key |
 | `refusal` | writing wallet | either party | the request it refers to carries the signature |
@@ -173,6 +183,12 @@ so the server pays every write — and verifies an EIP-712 signature recovers to
 address before it does. It can pay for a record and cannot author one. A forged grant would
 require a forged signature. The ids come from the signed messages, so a signature cannot be
 posted twice either.
+
+**One wallet popup a week.** A browser asks its wallet once for a `Session`: the key it generated,
+when it ends (at most 7 days, written out in UTC so the popup is readable), and the line "It cannot
+move any funds". That key then signs the same typed messages the wallet would. The server checks
+both signatures, and the records keep both, so a record signed by a browser key still traces to
+a wallet.
 
 The owner's browser does not take the paymaster's word for anything it pays to answer. Before
 a question costs anything, it checks the owner's signature over the grant and the asker's over

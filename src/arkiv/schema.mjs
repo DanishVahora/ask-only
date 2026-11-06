@@ -54,6 +54,12 @@ export const Vault = defineSchema("askonly.vault", {
   label: str(), // "Payslip - Oct 2026", owner-facing only
   iv: str(), // base64 AES-GCM nonce
   cipher: bytes(), // AES-GCM-256 ciphertext. Encrypted in the browser. Never readable here.
+  // The owner's Seal signature over (sha256, label): their wallet's, or ownerKey's.
+  // Empty on documents sealed before sealing was signed.
+  ownerSig: bytes(),
+  ownerKey: str(), // the browser key that signed for the owner, or "" if their wallet did
+  ownerKeyDiesAt: u64(), // seconds, when that key's session ends. 0 with no key
+  ownerKeySig: bytes(), // the owner's wallet over that Session, tracing ownerSig back to them
 });
 
 /* ---------------------------------------------------------------------------
@@ -69,9 +75,9 @@ export const Grant = defineSchema("askonly.grant", {
   verifier: addr().indexed(),
   verifierName: str().indexed(), // "landlord.eth" - the ENS name, not a label
   questionSet: str().indexed(), // income | identity | tenancy | employment
-  state: str().indexed(), // live | spent | revoked
-  usesAllowed: u64().indexed(),
-  usesSpent: u64().indexed(),
+  state: str().indexed(), // live | revoked, and spent on old counted grants
+  usesAllowed: u64().indexed(), // 0: no count. Grants before 2026-11-07 carried one
+  usesSpent: u64().indexed(), // questions answered or turned down
   issuedAt: u64().indexed(), // ms
   diesAt: u64().indexed(), // ms, exactly as the owner signed it. $expiresAt follows it to the block
 
@@ -80,7 +86,10 @@ export const Grant = defineSchema("askonly.grant", {
   threshold: str(), // e.g. "50000" - the figure inside the question, never the document's
   note: str(), // what the owner was told they were granting
   sessionKey: str(), // the key in the owner's browser that may answer under this grant
-  ownerSig: bytes(), // EIP-712 signature of the principal over the grant terms
+  ownerSig: bytes(), // EIP-712 signature over the grant terms: the owner's wallet, or ownerKey
+  ownerKey: str(), // the browser key that signed for the owner, or "" if their wallet did
+  ownerKeyDiesAt: u64(), // seconds, when that key's session ends. 0 with no key
+  ownerKeySig: bytes(), // the owner's wallet over that Session, tracing ownerSig back to them
 });
 
 /* ---------------------------------------------------------------------------
@@ -135,7 +144,7 @@ export const Refusal = defineSchema("askonly.refusal", {
   owner: addr().indexed(),
   asker: addr().indexed(),
   questionHash: str().indexed(),
-  reason: str().indexed(), // owner-declined | out-of-scope | no-ens-role | uses-exhausted | expired
+  reason: str().indexed(), // owner-declined | out-of-scope | no-ens-role | expired
   at: u64().indexed(),
 
   question: str(),
@@ -173,8 +182,11 @@ export const Request = defineSchema("askonly.request", {
 
   question: str(),
   askerSig: bytes(), // EIP-712 - the verifier signed BEFORE being told anything
-  askerKey: str(), // a key the asker's wallet let sign questions under this permission, or ""
-  askKeySig: bytes(), // the asker's wallet over that AskKey, which traces askerSig back to them
+  askerKey: str(), // a browser key the asker's wallet let sign for them, or ""
+  // The asker's wallet over that key, which traces askerSig back to them. An AskKey
+  // for this one permission when askKeyDiesAt is 0, otherwise a Session that ends then.
+  askKeySig: bytes(),
+  askKeyDiesAt: u64(), // seconds
 });
 
 /** Question sets -> ENSv2 EAC role bits.

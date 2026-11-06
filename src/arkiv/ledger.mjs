@@ -42,10 +42,14 @@ const ours = () =>
 
 /** Store an encrypted document. `cipher` arrives already encrypted from the
  *  owner's browser; this process never sees the plaintext or the key. */
-export async function putVault(ctx, { owner, label, docKind, sha256, iv, cipher, days = 180 }) {
+export async function putVault(ctx, {
+  owner, label, docKind, sha256, iv, cipher, days = 180,
+  ownerSig = new Uint8Array(), ownerKey = "", ownerKeyDiesAt = 0, ownerKeySig = new Uint8Array(),
+}) {
   const bytesLen = cipher?.length ?? 0;
   if (bytesLen === 0) throw safeError("refusing to store an empty ciphertext");
-  if (bytesLen > 128 * 1024) {
+  // 128 KiB is for every bytes column in one create, the signatures included.
+  if (bytesLen + ownerSig.length + ownerKeySig.length > 128 * 1024) {
     throw safeError(`ciphertext is ${bytesLen} bytes; Arkiv allows 128 KiB per create`);
   }
   const vaultId = `v-${crypto.randomUUID().slice(0, 8)}`;
@@ -65,6 +69,10 @@ export async function putVault(ctx, { owner, label, docKind, sha256, iv, cipher,
           label: str(fitStr(label)),
           iv: str(fitStr(iv)),
           cipher: bytes(cipher),
+          ownerSig: bytes(ownerSig),
+          ownerKey: str(fitStr(ownerKey)),
+          ownerKeyDiesAt: u64(BigInt(ownerKeyDiesAt)),
+          ownerKeySig: bytes(ownerKeySig),
         },
         { expiration: expiry.days(days) },
         { gas },
@@ -80,8 +88,8 @@ export async function putVault(ctx, { owner, label, docKind, sha256, iv, cipher,
  */
 export async function issueGrant(ctx, {
   grantId = null, diesAt = null, vaultId, owner, verifier, verifierName, questionSet,
-  usesAllowed = 3, minutes = null, days = 7, threshold = "", note = "", labelId = 0n, ownerSig = new Uint8Array(),
-  sessionKey = "",
+  usesAllowed = 0, minutes = null, days = 7, threshold = "", note = "", labelId = 0n, ownerSig = new Uint8Array(),
+  sessionKey = "", ownerKey = "", ownerKeyDiesAt = 0, ownerKeySig = new Uint8Array(),
 }) {
   /* The scope is the owner's own words; `questionSet` is only a coarse tag
    * derived from them, used to pick an ENSv2 role bit. Rejecting a tag for
@@ -122,6 +130,9 @@ export async function issueGrant(ctx, {
           note: str(fitStr(note)),
           sessionKey: str(fitStr(sessionKey)),
           ownerSig: bytes(ownerSig),
+          ownerKey: str(fitStr(ownerKey)),
+          ownerKeyDiesAt: u64(BigInt(ownerKeyDiesAt)),
+          ownerKeySig: bytes(ownerKeySig),
         },
         { expiration },
         { gas },
@@ -131,12 +142,13 @@ export async function issueGrant(ctx, {
   return { grantId, entityKey: res.entityKey, txHash: res.txHash, tx: txLink(res.txHash), expiresAt: res.expiresAt?.toString(), roleBit: set.roleBit.toString() };
 }
 
-/** Burn one use. `state` flips to `spent` on the last use because the network
- *  cannot express "uses remaining is not zero" - there is no NOT. */
+/** Burn one use. On an old counted grant `state` flips to `spent` on the last use,
+ *  because the network cannot express "uses remaining is not zero" - there is no
+ *  NOT. A grant with usesAllowed 0 has no count and only ever counts up. */
 export async function spendGrant(ctx, entityKey, { usesSpent, usesAllowed }) {
   const next = BigInt(usesSpent) + 1n;
   const set = { usesSpent: u64(next) };
-  if (next >= BigInt(usesAllowed)) set.state = str("spent");
+  if (BigInt(usesAllowed) > 0n && next >= BigInt(usesAllowed)) set.state = str("spent");
   await guardedWrite(ctx, ({ gas }) => ctx.wallet.patchEntity(Grant, entityKey, { set }, { gas }), {
     label: "spendGrant",
   });
@@ -228,11 +240,11 @@ const refusalValues = (refusalId, r) => ({
   detail: str(fitStr(r.detail ?? "")),
 });
 
-/** What spending one use of a permission changes. */
+/** What answering one question changes. Only an old counted grant can run out. */
 const spendSet = ({ usesSpent, usesAllowed }) => {
   const next = BigInt(usesSpent) + 1n;
   const set = { usesSpent: u64(next) };
-  if (next >= BigInt(usesAllowed)) set.state = str("spent");
+  if (BigInt(usesAllowed) > 0n && next >= BigInt(usesAllowed)) set.state = str("spent");
   return set;
 };
 
@@ -372,6 +384,7 @@ export async function openRequest(ctx, r) {
           askerSig: bytes(r.askerSig ?? new Uint8Array()),
           askerKey: str(fitStr(r.askerKey ?? "")),
           askKeySig: bytes(r.askKeySig ?? new Uint8Array()),
+          askKeyDiesAt: u64(BigInt(r.askKeyDiesAt ?? 0)),
         },
         // A request must not outlive the permission it is made under.
         { expiration: r.minutes ? expiry.minutes(r.minutes) : expiry.days(r.days ?? 7) },
@@ -403,7 +416,7 @@ export async function pendingFor(reader, owner, limit = 100) {
     .select({
       $key: true, requestId: true, grantId: true, vaultId: true, asker: true, askerName: true,
       questionSet: true, question: true, questionHash: true, askedAt: true, state: true, askerSig: true,
-      askerKey: true, askKeySig: true,
+      askerKey: true, askKeySig: true, askKeyDiesAt: true,
     })
     .from(Request).createdBy(ours())
     .where(and(eq("owner", addr(owner)), eq("state", str("pending"))))
@@ -426,6 +439,7 @@ export async function pendingFor(reader, owner, limit = 100) {
     askerSig: val(e, "askerSig") ?? "",
     askerKey: val(e, "askerKey") ?? "",
     askKeySig: val(e, "askKeySig") ?? "",
+    askKeyDiesAt: Number(val(e, "askKeyDiesAt") ?? 0),
   }));
 }
 
@@ -529,8 +543,8 @@ export async function accessesOfGrant(reader, grantId, limit = 50) {
   }));
 }
 
-/** How many questions under one permission are still waiting. Counted, not listed:
- *  a list stopped at 50, and a permission allows 100. */
+/** How many questions under one permission are still waiting. Counted, not listed,
+ *  because a list stops at 50. */
 export async function openCount(reader, grantId) {
   return Number(
     await reader
@@ -603,6 +617,15 @@ export async function accessById(reader, accessId) {
 
 const val = (row, k) => row?.[k]?.value;
 
+/** Who signed a grant for its owner: their wallet (ownerKey ""), or a browser key
+ *  with the wallet's Session over it. Enough for anyone to check it themselves. */
+const signedFor = (e) => ({
+  ownerSig: val(e, "ownerSig") ?? "",
+  ownerKey: val(e, "ownerKey") ?? "",
+  ownerKeyDiesAt: Number(val(e, "ownerKeyDiesAt") ?? 0),
+  ownerKeySig: val(e, "ownerKeySig") ?? "",
+});
+
 /**
  * Fetch a grant by id. Returns null when the grant has passed its death block,
  * because the network stops returning it - that null IS the expiry.
@@ -614,7 +637,7 @@ export async function liveGrant(reader, grantId) {
       grantId: true, vaultId: true, owner: true, verifier: true, verifierName: true,
       questionSet: true, state: true, usesAllowed: true, usesSpent: true,
       issuedAt: true, diesAt: true, roleBit: true, labelId: true, threshold: true, note: true,
-      sessionKey: true, ownerSig: true,
+      sessionKey: true, ownerSig: true, ownerKey: true, ownerKeyDiesAt: true, ownerKeySig: true,
     })
     .from(Grant).createdBy(ours())
     .where(eq("grantId", str(grantId)))
@@ -641,7 +664,7 @@ export async function liveGrant(reader, grantId) {
     threshold: val(e, "threshold"),
     note: val(e, "note"),
     sessionKey: val(e, "sessionKey"),
-    ownerSig: val(e, "ownerSig") ?? "",
+    ...signedFor(e),
   };
 }
 
@@ -652,6 +675,7 @@ export async function grantsOf(reader, owner, limit = 50) {
       grantId: true, vaultId: true, verifierName: true, verifier: true, questionSet: true,
       state: true, usesAllowed: true, usesSpent: true, diesAt: true, issuedAt: true,
       threshold: true, note: true, sessionKey: true, ownerSig: true,
+      ownerKey: true, ownerKeyDiesAt: true, ownerKeySig: true,
     })
     .from(Grant).createdBy(ours())
     .where(eq("owner", addr(owner)))
@@ -676,7 +700,7 @@ export async function grantsOf(reader, owner, limit = 50) {
     sessionKey: val(e, "sessionKey"),
     // The owner's signature over these exact terms, which their browser checks before
     // it answers anything under them.
-    ownerSig: val(e, "ownerSig") ?? "",
+    ...signedFor(e),
   }));
 }
 
