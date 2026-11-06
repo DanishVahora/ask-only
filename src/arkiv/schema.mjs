@@ -1,7 +1,7 @@
 /**
  * AskOnly — Arkiv schemas.
  *
- * Four entities. The important one is `grant`: its `$expiresAt` IS the permission.
+ * Five entities. The important one is `grant`: its `$expiresAt` IS the permission.
  * There is no `revoked` boolean to flip and no cron to run — past the death block the
  * network stops returning it and every operation on it fails.
  *
@@ -73,7 +73,7 @@ export const Grant = defineSchema("askonly.grant", {
   vaultId: str().indexed(),
   owner: addr().indexed(),
   verifier: addr().indexed(),
-  verifierName: str().indexed(), // "landlord.eth" - the ENS name, not a label
+  verifierName: str().indexed(), // the name the owner typed, or a short address; never resolved
   questionSet: str().indexed(), // income | identity | tenancy | employment
   state: str().indexed(), // live | revoked, and spent on old counted grants
   usesAllowed: u64().indexed(), // 0: no count. Grants before 2026-11-07 carried one
@@ -81,7 +81,7 @@ export const Grant = defineSchema("askonly.grant", {
   issuedAt: u64().indexed(), // ms
   diesAt: u64().indexed(), // ms, exactly as the owner signed it. $expiresAt follows it to the block
 
-  roleBit: u256(), // the ENSv2 EAC role the verifier must hold
+  roleBit: u256(), // an ENSv2 EAC role bit for AskOnlyGate; the app does not check it
   labelId: u256(), // the ENS resource the role is checked against
   threshold: str(), // e.g. "50000" - the figure inside the question, never the document's
   note: str(), // what the owner was told they were granting
@@ -144,7 +144,7 @@ export const Refusal = defineSchema("askonly.refusal", {
   owner: addr().indexed(),
   asker: addr().indexed(),
   questionHash: str().indexed(),
-  reason: str().indexed(), // owner-declined | out-of-scope | no-ens-role | expired
+  reason: str().indexed(), // the app writes owner-declined | out-of-scope; older scripts wrote others
   at: u64().indexed(),
 
   question: str(),

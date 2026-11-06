@@ -251,8 +251,8 @@ pinned reads of the same fact still disagree rather than quietly picking one.
 **6. `extendEntity` takes an object, and the positional form produced a false pass.** It is
 `extendEntity({ entityKey, expiration }, txParams)`. The positional form throws
 `InvalidExpiryError`, so the test asserting "every operation on a dead entity fails" passed while
-proving nothing. A false proof is worse than a missing one; the test now asserts on the failure
-*reason*, not on failure. Related sharp edge: `str` is 128 **bytes**, not characters — `₹` costs 3
+proving nothing. A false proof is worse than a missing one; the test now uses the object form and
+prints each failure's reason beside it, so a pass for the wrong reason shows. Related sharp edge: `str` is 128 **bytes**, not characters — `₹` costs 3
 bytes and `मियाद` is 5 characters and 15 bytes — so `fitStr()` truncates on a code-point boundary.
 
 One more worth stating: `rabdi({ accessKey })` path-encodes the access key into the RPC URL, so

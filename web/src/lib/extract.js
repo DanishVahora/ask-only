@@ -9,8 +9,9 @@
  *
  * Sending the image means sending all of it: the employer, the PAN, the bank
  * account, the address — everything the camera caught. That throws away
- * minimisation, which is the strongest property this product has. Measured on
- * a real payslip, the enclave sees 4 of 12 lines.
+ * minimisation, which is the strongest property this product has. Asked whether
+ * they can afford the rent, the enclave is first shown 7 of the sample payslip's
+ * 16 lines (web/src/lib/questions.js computes it; the landing page runs it live).
  *
  * So the file is read HERE: PDF text with pdf.js, scans with Tesseract, both
  * running in this tab. The original never leaves the machine — not to our
