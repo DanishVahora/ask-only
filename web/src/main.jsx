@@ -15,16 +15,25 @@ import Ask from "./pages/Ask.jsx";
 import Ledger from "./pages/Ledger.jsx";
 
 /**
- * Injected only, on purpose.
+ * Every injected wallet, discovered automatically. Not MetaMask-only.
  *
- * RainbowKit and WalletConnect both want a cloud projectId, which means a
- * third-party service in the critical path of a demo being given on venue
- * wifi. MetaMask's injected provider needs nothing, works offline from any
- * cloud service, and is what the people in the room already have.
+ * multiInjectedProviderDiscovery turns on EIP-6963, so each wallet the browser
+ * has - MetaMask, Rabby, Coinbase, Brave, OKX, Phantom, Frame - announces
+ * itself and gets its own connector with its own name and icon. The injected()
+ * fallback covers older wallets that predate 6963.
+ *
+ * No WalletConnect and no RainbowKit, on purpose: both want a cloud projectId,
+ * which puts a third-party service in the critical path of a demo given on
+ * venue wifi. Nothing here needs the network to connect a wallet.
+ *
+ * Sepolia is listed because that is where ENSv2 lives and where the app READS
+ * from. It is not required for signing - the EIP-712 domain is chain-agnostic,
+ * so a wallet sitting on any network can sign without being asked to switch.
  */
 const config = createConfig({
   chains: [sepolia],
-  connectors: [injected()],
+  connectors: [injected({ shimDisconnect: true })],
+  multiInjectedProviderDiscovery: true,
   transports: { [sepolia.id]: http() },
 });
 

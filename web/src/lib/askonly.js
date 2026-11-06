@@ -90,7 +90,10 @@ export async function decryptDocument(cipherHex, ivB64, passphrase) {
 
 /* ------------------------------------------------------------- EIP-712 -- */
 
-export const DOMAIN = { name: "AskOnly", version: "1", chainId: 11155111 };
+/* Name and version only - no chainId. Must match src/auth/typed.mjs exactly
+ * or every signature fails verification. Chain-agnostic so any wallet on any
+ * network can sign without being asked to switch. */
+export const DOMAIN = { name: "AskOnly", version: "1" };
 
 export const TYPES = {
   Grant: [

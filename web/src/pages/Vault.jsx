@@ -10,7 +10,7 @@ import {
   api, encryptDocument, sha256hex, DOMAIN, TYPES, STATEMENTS,
   QUESTION_TEXT, short, remaining,
 } from "../lib/askonly.js";
-import { ConnectButton } from "../components/Shell.jsx";
+import ConnectButton from "../components/ConnectButton.jsx";
 import Inbox from "../components/Inbox.jsx";
 import RoleGuide from "../components/RoleGuide.jsx";
 import Countdown from "../components/Countdown.jsx";
@@ -56,7 +56,7 @@ function Gate() {
         </div>
         <p className="mt-6 border-t border-line pt-5 text-[0.8125rem] leading-relaxed text-ink-70">
           <strong className="font-semibold text-ink">Trying it alone?</strong> Add a second account
-          in MetaMask. Issue the permission to that second address, switch to it to ask, then switch
+          in your wallet. Issue the permission to that second address, switch to it to ask, then switch
           back to answer. The page follows whichever account is selected.
         </p>
       </div>

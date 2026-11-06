@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
+
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
-import { Wallet, LogOut } from "lucide-react";
+
 import clsx from "clsx";
-import { api, short } from "../lib/askonly.js";
+import { api } from "../lib/askonly.js";
+import ConnectButton from "./ConnectButton.jsx";
 
 /** A shape, not a swatch. */
 function Mark() {
@@ -14,36 +15,6 @@ function Mark() {
       className="inline-block h-[17px] w-[17px] rounded-[4px] bg-forest"
       style={{ clipPath: "polygon(0 0, 100% 0, 100% 58%, 58% 100%, 0 100%)" }}
     />
-  );
-}
-
-export function ConnectButton({ size = "sm" }) {
-  const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
-  const injected = connectors[0];
-
-  if (isConnected) {
-    return (
-      <button
-        className={clsx("btn", size === "sm" && "btn-sm")}
-        onClick={() => disconnect()}
-        title="Disconnect"
-      >
-        <span className="font-mono tnum">{short(address, 6, 4)}</span>
-        <LogOut size={14} />
-      </button>
-    );
-  }
-  return (
-    <button
-      className={clsx("btn btn-primary", size === "sm" ? "btn-sm" : "btn-lg")}
-      onClick={() => connect({ connector: injected })}
-      disabled={isPending || !injected}
-    >
-      <Wallet size={size === "sm" ? 15 : 18} />
-      {isPending ? "Check your wallet…" : !injected ? "No wallet found" : "Connect wallet"}
-    </button>
   );
 }
 

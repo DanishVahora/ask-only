@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import clsx from "clsx";
 
 import { api, sha256hex, DOMAIN, TYPES, STATEMENTS, short } from "../lib/askonly.js";
-import { ConnectButton } from "../components/Shell.jsx";
+import ConnectButton from "../components/ConnectButton.jsx";
 import Countdown from "../components/Countdown.jsx";
 import RoleGuide from "../components/RoleGuide.jsx";
 

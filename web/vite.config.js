@@ -21,7 +21,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true, // fail loudly rather than silently sliding to 5174
     proxy: {
-      "/api": { target: "http://localhost:5174", changeOrigin: false },
+      "/api": { target: "http://localhost:5175", changeOrigin: false },
     },
   },
   build: { outDir: "dist", emptyOutDir: true },

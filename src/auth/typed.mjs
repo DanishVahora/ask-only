@@ -20,13 +20,22 @@
 
 import { verifyTypedData, getAddress } from "viem";
 
-/** Sepolia, because that is the chain the users' wallets are actually on. */
-export const CHAIN_ID = 11155111;
-
+/**
+ * Deliberately chain-agnostic: name and version only.
+ *
+ * Every EIP-712 domain field is optional. Pinning chainId forced the signer's
+ * wallet to be on that exact chain, and a mismatch makes MetaMask fail with an
+ * opaque "An internal error was received" - which is what happens when someone
+ * has their wallet on, say, 0G Mainnet.
+ *
+ * These signatures authorise a record; they are not transactions. Each message
+ * already carries a unique grantId or requestId, so there is no cross-chain
+ * replay to defend against. Dropping chainId means ANY wallet on ANY network
+ * can sign, with no network-switching prompt in the way.
+ */
 export const domain = {
   name: "AskOnly",
   version: "1",
-  chainId: CHAIN_ID,
 };
 
 /**

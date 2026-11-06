@@ -4,7 +4,7 @@ import { Check, X, Radio } from "lucide-react";
 import clsx from "clsx";
 
 import { api, short, timeAgo } from "../lib/askonly.js";
-import { ConnectButton } from "../components/Shell.jsx";
+import ConnectButton from "../components/ConnectButton.jsx";
 
 export default function Ledger() {
   const { address, isConnected } = useAccount();
