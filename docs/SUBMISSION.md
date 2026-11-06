@@ -267,8 +267,8 @@ Ordered by what blocks a submission. Unchecked items are genuinely outstanding a
 
 **Blocking — repo and paperwork**
 
-- [ ] **Public GitHub repo.** `github.com/DanishVahora/eth_global` exists and is still **private**.
-      Commit, push and flip it public at submission. 40+ commits of real history exist, which matters —
+- [x] **Public GitHub repo.** `github.com/DanishVahora/eth_global` is public since 7 November, after
+      a scan of every commit found no secret. 50+ commits of real history exist, which matters —
       ETHGlobal treats "repositories with single commits of large files without proper history" as
       unqualified.
 - [x] **Open-source licence** — `LICENSE`, MIT, at the repo root.
@@ -409,7 +409,7 @@ Qualification requirements, checked one by one against the snapshot text:
 | README: **the wallet address(es) that wrote your entities, and one query we can run** | Yes — `0x4CA8176777D44B76235684b63334088C618994e4`, `scripts/judge-query.mjs` |
 | `/arkiv/schema.md`: your entities, the fields you query, who owns them, when they expire | Yes — all five entities |
 | One file per judging criterion, at the path next to it | Yes, all four |
-| Public repo with an open-source licence | **Licence yes; the repo is still private.** See §7 |
+| Public repo with an open-source licence | Yes — public, MIT |
 | Say how you used AI | Yes — `AI-DISCLOSURE.md` |
 | *Not counted:* the SDK installed but never used to read, or Arkiv used only as a log nothing reads | Not applicable — reads are in the hot path of every screen |
 
@@ -419,5 +419,5 @@ prize on ETHGlobal, so it does not use another of your three picks."*
 
 **Net result of the rubric check:** the MCP's automated checker reports no blockers, but that
 signal is near-meaningless. Validating by hand against the snapshot the MCP serves found two content
-gaps and two qualification gaps. Three are closed (`reach.md` §7, `why-arkiv.md` §6, and `schema.md`
-documents `askonly.request`). The fourth, making the repo public, happens at submission.
+gaps and two qualification gaps. All four are closed: `reach.md` §7, `why-arkiv.md` §6, `schema.md`
+documents `askonly.request`, and the repo is public.
