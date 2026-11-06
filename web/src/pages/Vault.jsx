@@ -13,6 +13,7 @@ import {
 import ConnectButton from "../components/ConnectButton.jsx";
 import Inbox from "../components/Inbox.jsx";
 import RoleGuide from "../components/RoleGuide.jsx";
+import DropDoc from "../components/DropDoc.jsx";
 import Countdown from "../components/Countdown.jsx";
 
 function Gate() {
@@ -234,7 +235,20 @@ Net Pay: 62,960`,
                     </div>
                   </div>
                   <div>
-                    <label className="field-label">Contents</label>
+                    <label className="field-label">The document</label>
+                    <DropDoc
+                      disabled={busy}
+                      onText={(text, meta) =>
+                        setDoc((d) => ({
+                          ...d,
+                          text,
+                          label: d.label === "Payslip — Oct 2026" ? meta.name.replace(/\.[^.]+$/, "") : d.label,
+                        }))
+                      }
+                    />
+                    <p className="mb-1.5 mt-4 text-[0.75rem] text-ink-50">
+                      What was read — check it, edit it, or just type here instead:
+                    </p>
                     <textarea className="input font-mono text-[0.8125rem] leading-relaxed" rows={8}
                       spellCheck={false} value={doc.text}
                       onChange={(e) => setDoc({ ...doc, text: e.target.value })} />
