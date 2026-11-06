@@ -10,6 +10,7 @@ import { api } from "../lib/askonly.js";
 import { grantsQuery, inboxQuery, useAnswering } from "../lib/answering.jsx";
 import ConnectButton from "./ConnectButton.jsx";
 import KeySheet from "./KeySheet.jsx";
+import Mark from "./Mark.jsx";
 
 /* What this page needs from the API. A stale server looks exactly like a bug in
  * whatever you happen to be looking at, and cost an evening before anything said so. */
@@ -21,17 +22,6 @@ const OWN = [
   { to: "/questions", label: "Questions" },
 ];
 const THEIRS = [{ to: "/shared", label: "Shared with me", also: ["/ask"] }];
-
-/** A sheet of paper with one corner gone. */
-export function Mark({ className }) {
-  return (
-    <span
-      aria-hidden
-      className={clsx("inline-block h-[18px] w-[18px] rounded-[4px] bg-current", className)}
-      style={{ clipPath: "polygon(0 0, 100% 0, 100% 58%, 58% 100%, 0 100%)" }}
-    />
-  );
-}
 
 /** A page, and the highlighter that marks the one you're on. It slides to the next. */
 function Tab({ item, pathname, count, attention, id }) {
@@ -184,7 +174,7 @@ export default function Shell({ children }) {
       <header className={clsx("app-bar", scrolled && "is-scrolled")}>
         <div className="app-bar-in">
           <Link to="/" className="app-logo">
-            <Mark />
+            <Mark size={20} />
             AskOnly
           </Link>
           <Tabs pathname={pathname} counts={counts} waitingLocked={waitingLocked} id="tab" className="app-tabs-wide" />

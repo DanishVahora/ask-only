@@ -208,6 +208,25 @@
     letter-spacing: -0.025em;
     color: var(--color-ink);
   }
+  /* The logo (components/Mark.jsx). Its yellow line is a highlighter stroke, and hovering
+     the link it sits in draws the stroke again, left to right. */
+  .logo-mark {
+    display: block;
+    flex: none;
+  }
+  .logo-line {
+    stroke: var(--color-marker, #ffd447);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    a:hover > .logo-mark .logo-line,
+    a:focus-visible > .logo-mark .logo-line {
+      animation: logo-draw 0.55s cubic-bezier(0.65, 0, 0.35, 1);
+    }
+  }
+  @keyframes logo-draw {
+    from { stroke-dasharray: 1 2; stroke-dashoffset: 1; }
+    to { stroke-dasharray: 1 2; stroke-dashoffset: 0; }
+  }
   .app-tabs {
     display: flex;
     align-items: center;

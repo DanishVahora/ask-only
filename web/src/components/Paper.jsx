@@ -34,7 +34,13 @@ export function WaxSeal({ className }) {
       <circle cx="32" cy="32" r="20" fill={`url(#${id}-p)`} />
       <circle cx="32" cy="32" r="20" fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth="0.9" />
       <circle cx="32" cy="32" r="21.2" fill="none" stroke="rgba(0,0,0,0.26)" strokeWidth="0.9" />
-      <path d="M24.5 24.5h15v8.7l-6.3 6.3h-8.7z" fill="rgba(244,243,220,0.82)" />
+      {/* The mark from Mark.jsx, pressed: one colour, its line a groove the wax shows through. */}
+      <path
+        transform="translate(25.69 23.5) scale(0.02742)"
+        fillRule="evenodd"
+        fill="rgba(244,243,220,0.82)"
+        d="M37 0H423A37 37 0 0 1 460 37V518.8L358.8 620H37A37 37 0 0 1 0 583V37A37 37 0 0 1 37 0ZM98 270H362A40 40 0 0 1 362 350H98A40 40 0 0 1 98 270Z"
+      />
     </svg>
   );
 }

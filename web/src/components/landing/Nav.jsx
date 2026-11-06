@@ -1,24 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
-
-/** A sheet of paper with one corner gone. */
-export function Mark({ size = 20 }) {
-  return (
-    <span
-      aria-hidden="true"
-      style={{
-        display: "inline-block",
-        width: size,
-        height: size,
-        flex: "none",
-        background: "currentColor",
-        borderRadius: size * 0.2,
-        clipPath: "polygon(0 0, 100% 0, 100% 58%, 58% 100%, 0 100%)",
-      }}
-    />
-  );
-}
+import Mark from "../Mark.jsx";
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
@@ -34,7 +17,7 @@ export default function Nav() {
     <header className={clsx("lp-nav", scrolled && "is-scrolled")}>
       <div className="lp-nav-in">
         <Link to="/" className="lp-logo">
-          <Mark size={21} />
+          <Mark size={22} />
           AskOnly
         </Link>
         <nav className="lp-nav-links" aria-label="On this page">

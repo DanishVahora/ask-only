@@ -1,4 +1,4 @@
-import { Mark } from "./Nav.jsx";
+import Mark from "../Mark.jsx";
 
 function Row({ k, v, href }) {
   return (
@@ -24,7 +24,7 @@ export default function Footer() {
       <div className="lp-receipt">
         <p className="lp-receipt-head">
           <span>
-            <Mark size={17} />
+            <Mark size={19} />
             AskOnly
           </span>
           <span>Receipt</span>
