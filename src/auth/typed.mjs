@@ -18,7 +18,7 @@
  * author one.
  */
 
-import { verifyTypedData, getAddress } from "viem";
+import { verifyTypedData, recoverTypedDataAddress, getAddress } from "viem";
 
 /**
  * Deliberately chain-agnostic: name and version only.
@@ -37,6 +37,26 @@ export const domain = {
   name: "AskOnly",
   version: "1",
 };
+
+/**
+ * Domains we will accept a signature under.
+ *
+ * The browser caches JavaScript. If the page is holding an older bundle than
+ * the server is running, the two sign and verify under different domains and
+ * every signature is rejected with "this was not signed by you" - which is a
+ * true statement about the wrong question, and sends you hunting for a key
+ * problem that does not exist.
+ *
+ * So we try each known domain. This gives up nothing: the signature must still
+ * be produced by the claimed address over the exact message. It only stops a
+ * deploy skew from looking like a forgery.
+ */
+export const ACCEPTED_DOMAINS = [
+  domain,
+  // pre-2026-11-06: the domain was pinned to Sepolia, which forced the signer's
+  // wallet onto that chain and broke for anyone sitting on another network.
+  { name: "AskOnly", version: "1", chainId: 11155111 },
+];
 
 /**
  * A grant. Signed by the data principal. This is the capability itself:
@@ -146,27 +166,46 @@ export async function requireSignature({ address, types, primaryType, message, s
     throw new SignatureError(`"${address}" is not an address`);
   }
 
-  let valid = false;
-  try {
-    valid = await verifyTypedData({
-      address: claimed,
-      domain,
-      types,
-      primaryType,
-      message,
-      signature,
-    });
-  } catch (e) {
-    throw new SignatureError(`signature could not be checked: ${String(e.message).slice(0, 120)}`);
+  let lastError = null;
+  for (const candidate of ACCEPTED_DOMAINS) {
+    try {
+      const valid = await verifyTypedData({
+        address: claimed,
+        domain: candidate,
+        types,
+        primaryType,
+        message,
+        signature,
+      });
+      if (valid) return claimed;
+    } catch (e) {
+      lastError = e;
+    }
   }
 
-  if (!valid) {
+  if (lastError) {
     throw new SignatureError(
-      `this ${primaryType} was not signed by ${claimed}. ` +
-        `The server pays for the write but cannot author one, so it is refused.`,
+      `signature could not be checked: ${String(lastError.message).slice(0, 120)}`,
     );
   }
-  return claimed;
+
+  // Recover whoever DID sign it. "signed by 0xAAA, you claimed 0xBBB" says
+  // immediately whether this is the wrong account or a mangled message;
+  // "not signed by you" sends people looking for a key problem instead.
+  let signer = null;
+  try {
+    signer = await recoverTypedDataAddress({ domain, types, primaryType, message, signature });
+  } catch {
+    /* an unrecoverable signature tells us the message itself differs */
+  }
+
+  throw new SignatureError(
+    signer
+      ? `that signature is from ${signer}, but the request claims ${claimed}. ` +
+        `Switch to the right account, or reload the page if it has been open a while.`
+      : `this ${primaryType} could not be matched to ${claimed} — the signed message and the ` +
+        `submitted one differ. Reload the page: it is usually a stale tab after a deploy.`,
+  );
 }
 
 /** Everything a browser needs to produce a matching signature. */
