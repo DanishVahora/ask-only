@@ -44,14 +44,17 @@ deleted it, you can prove you never held it.** AskOnly is built entirely around 
 **How it works, as two parties with two wallets.** The owner connects a wallet; their address is
 their identity. A document is encrypted in their browser — AES-GCM-256, key derived by PBKDF2 at
 210,000 iterations from a passphrase that never leaves the page — and the ciphertext is written to
-Arkiv as an entity carrying its own death block. The owner signs an EIP-712 **grant**: one question
-set, N uses, an expiry. A verifier connects their own wallet and signs an EIP-712 **request**,
-which lands as `askonly.request state=pending` in the owner's inbox. Because only the owner's
-device holds the passphrase, **only the owner's device can answer** — it decrypts locally, sends a
-minimal text extract to a `glm-5.3` enclave on 0G Private Compute, and signs the answer back. The
-verifier never holds a key, a passphrase or a document. The server pays Arkiv gas and does nothing
+Arkiv as an entity carrying its own death block. The owner signs one EIP-712 **grant**: this reviewer,
+until this time, and this key in my browser may answer them. That is the only decision the owner makes.
+A reviewer connects their own wallet and signs once, letting a key in their browser sign EIP-712
+**requests** under that one permission, so each question lands as `askonly.request state=pending`
+with no further popup. Because only the owner's device holds the passphrase, **only the owner's
+browser can answer**, and it does so by itself: it decrypts locally, sends the fewest lines that can settle
+the question to a `glm-5.3` enclave on 0G Private Compute, widens only if those cannot, and signs the
+answer back with the key the grant named. The reviewer never holds a key, a passphrase or a document. The server pays Arkiv gas and does nothing
 else: it runs `verifyTypedData` on every grant, request and answer before it writes, so **the
-operator pays for a transaction and cannot author one.**
+operator pays for a transaction and cannot author one.** The owner's browser checks the same
+signatures before it pays to answer, so a server that invents a question gets nothing answered.
 
 Three sponsors, three jobs nothing else does. **Arkiv** holds the capability, and the capability's
 `$expiresAt` *is* the permission — there is no `isActive` flag to forget and no revocation job to
@@ -89,7 +92,7 @@ inverts the burden of proof every other consent system has backwards.
 Four entities, each one visible to a user: `askonly.vault` (the ciphertext, in a `bytes` column,
 carrying its own death block), `askonly.grant` (the capability), `askonly.access` (the receipt the
 verifier must sign to be told the answer), and `askonly.refusal` (what someone tried to ask and was
-not permitted to). A fifth, `askonly.request`, is the owner's inbox. `state` is a positive enum
+not permitted to). A fifth, `askonly.request`, is the queue of questions the owner's browser answers from. `state` is a positive enum
 throughout because the network has **no `NOT` and no `!=`**.
 
 **Reads cost no gas**, so every query shape was validated against the live network with a
@@ -181,9 +184,17 @@ submission, not an appendix to it.
 - **The writable demo ENS registry is a mock**, because roles cannot be granted on a name we do not
   control. It replicates the real `ALL_ROLES` validation and root-OR semantics, and the production
   gate deployed alongside it reads the canonical ETHRegistry. Both are labelled everywhere.
-- **The hosted demo is a trusted operator.** 0G's CORS allowlist rejects deployed origins, so a
-  hosted instance must relay with its own key and can see the extract. It says so in a permanent
-  banner, and `/api/ask/relay` refuses to run on localhost so the honest path cannot be bypassed.
+- **A hosted copy would be a trusted operator, so there is no hosted demo.** 0G's CORS allowlist
+  rejects deployed origins, so a hosted instance would have to relay with its own key and could
+  see the extract. `/api/mode` reports that and `/api/ask/relay` refuses to run on localhost, but
+  no screen shows the banner yet, and the app does not use the relay. AskOnly runs on localhost.
+- **Questions and verdicts are public.** Every question, its yes, no or unknown, the topic a
+  reviewer may ask about, their display name and the document's name are stored in the clear on
+  Arkiv. The document never is, and neither is any figure in it.
+- **A browser that answers by itself keeps a key on disk.** While a permission is live, the
+  owner's browser holds the document's key in IndexedDB as a non-extractable CryptoKey. No script
+  can read it out, but Chrome writes it to the profile's files, so anyone who can read those files
+  can open the document. The record ends with the permissions it serves.
 - **The retention monitor is an observation over a window**, not a proof of absence for all time.
 
 ---
@@ -261,9 +272,10 @@ Ordered by what blocks a submission. Unchecked items are genuinely outstanding a
 
 **Blocking — repo and paperwork**
 
-- [ ] **Public GitHub repo.** `git remote -v` is currently empty; the repo has no remote at all.
-      Push it and make it public. 11 commits of real history exist, which matters — ETHGlobal treats
-      "repositories with single commits of large files without proper history" as unqualified.
+- [ ] **Public GitHub repo.** `github.com/DanishVahora/eth_global` exists and is still **private**.
+      Commit, push and flip it public at submission. 26 commits of real history exist, which matters —
+      ETHGlobal treats "repositories with single commits of large files without proper history" as
+      unqualified.
 - [x] **Open-source licence** — `LICENSE`, MIT, at the repo root.
 - [x] **AI-use disclosure** — `AI-DISCLOSURE.md`, including the five places the AI was wrong and how
       each was caught.
@@ -277,10 +289,8 @@ Ordered by what blocks a submission. Unchecked items are genuinely outstanding a
 - [x] `arkiv/reach.md` — Reach
 - [x] `arkiv/why-arkiv.md` — Why Arkiv
 - [x] `arkiv/how-you-use-arkiv.md` — How you use Arkiv
-- [ ] `arkiv/schema.md` — **needs an update before submitting.** It documents four entities; the
-      two-party refactor added a fifth, `askonly.request`, which is defined in `src/arkiv/schema.mjs`
-      but absent from `schema.md`. The qualification requirement is that `schema.md` list *your
-      entities, the fields you query, who owns them and when they expire*.
+- [x] `arkiv/schema.md` — lists all five entities, including `askonly.request`, with the fields
+      queried, who owns them and when they expire.
 - [ ] Two rubric questions lack an explicit answer. `why-arkiv.md` is asked "**what did you keep off
       Arkiv, and why?**" — the answer is in the prose (the passphrase, the document key, the
       plaintext, all personal data) but is not stated under that question. `reach.md` is asked "**can
@@ -289,11 +299,8 @@ Ordered by what blocks a submission. Unchecked items are genuinely outstanding a
 
 **Blocking — the two-party claim this copy makes**
 
-- [ ] **Remove `prompt("Owner passphrase…")` from the verifier screen.** Still present at
-      `app/public/js/ask.js:252`. PLAN-V2 gate A5 is `grep prompt( app/public/js/ask.js` → nothing.
-      If a verifier can type the owner's passphrase then they can hold the document, the premise is
-      void, and every blurb above describes a system the code does not yet implement. Highest
-      priority item on this list.
+- [x] **No owner passphrase on the reviewer's screen.** `app/public/js/ask.js` is gone, and the
+      reviewer's page in `web/src/pages/Ask.jsx` has no passphrase field and no way to decrypt.
 - [ ] Owner inbox demonstrated across two browser profiles with two different wallets (PLAN-V2 gates
       A1 and A4): ask in one window, watch it light up in the other.
 - [ ] A tampered EIP-712 payload refused with a named error (gate A2). `src/auth/typed.mjs` and
@@ -406,11 +413,11 @@ Qualification requirements, checked one by one against the snapshot text:
 | Requirement | State |
 |---|---|
 | Built from scratch at Mumbai, ETHGlobal's rules | Yes |
-| Writes to Arkiv's current testnet with `@arkiv-network/sdk`, **and at least one feature users see reads its data from Arkiv** | Yes — the verifier's grant screen, the owner's ledger and the retention monitor all read from Arkiv |
+| Writes to Arkiv's current testnet with `@arkiv-network/sdk`, **and at least one feature users see reads its data from Arkiv** | Yes — the reviewer's thread and the owner's Documents, Reviewers and Questions pages all read from Arkiv |
 | README: **the wallet address(es) that wrote your entities, and one query we can run** | Yes — `0x4CA8176777D44B76235684b63334088C618994e4`, `scripts/judge-query.mjs` |
-| `/arkiv/schema.md`: your entities, the fields you query, who owns them, when they expire | **Incomplete — missing `askonly.request`.** See §7 |
+| `/arkiv/schema.md`: your entities, the fields you query, who owns them, when they expire | Yes — all five entities |
 | One file per judging criterion, at the path next to it | Yes, all four |
-| Public repo with an open-source licence | **Licence yes; the repo has no remote yet.** See §7 |
+| Public repo with an open-source licence | **Licence yes; the repo is still private.** See §7 |
 | Say how you used AI | Yes — `AI-DISCLOSURE.md` |
 | *Not counted:* the SDK installed but never used to read, or Arkiv used only as a log nothing reads | Not applicable — reads are in the hot path of every screen |
 

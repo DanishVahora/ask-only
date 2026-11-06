@@ -77,7 +77,7 @@ export const Vault = defineSchema("askonly.vault", {
   owner: addr().indexed(),
   docKind: str().indexed(),
   state: str().indexed(),
-  sha256: str().indexed(),      // hash of the PLAINTEXT, so the owner can prove which document
+  sha256: str().indexed(),      // hash of the CIPHERTEXT. Of the plaintext, a short document could be guessed
   bytesLen: u64().indexed(),
   createdAt: u64().indexed(),
   label: str(),

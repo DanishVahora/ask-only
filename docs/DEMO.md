@@ -1,195 +1,133 @@
-# Demo — 4 minutes
+# Demo: under 3 minutes
 
-Finalists get 7 minutes: 4 demo, 3 Q&A. This is the 4.
-
-**The shape:** a refusal, an answer, and a death. Do not start with the thesis — start with the
-landlord, and let the thesis land in beat 6.
+**The shape:** one document, one reviewer, several questions with nothing to click, then the
+permission dies on screen. Start with the landlord. Let the thesis land at the end.
 
 ---
 
 ## Before you start
 
 ```bash
-npm run preflight          # 14 live checks. If any fail, fix before going on stage.
-npm start                  # http://localhost:5173  — NOT any other port
+npm run preflight          # live checks. If any fail, fix before recording.
+npm start                  # http://localhost:5173, and only that port
 ```
 
-**Two wallet accounts.** Add a second account in your wallet before you start. Account 1 is you,
-Account 2 is the landlord. The app follows whichever is selected, so the whole two-party demo is
-one toggle — no second laptop, no second browser.
+**Two wallet accounts.** Account 1 is you, Account 2 is the landlord. Use two browser profiles, so
+the owner's tab stays open and answering while you drive the landlord's.
 
-Have open:
-1. `http://localhost:5173/` — the landing page
-2. `http://localhost:5173/vault` — your side, on **Account 1**
-3. A second tab on the grant link — the landlord's side, which you'll switch to **Account 2** for
+Have ready:
+1. `http://localhost:5173/` on the landing page
+2. A short payslip as a text file or PDF
+3. Your 0G key saved once beforehand, so its field doesn't appear on camera
 
-Set the permission to **2 minutes**. The countdown has to expire on camera.
-
-Paste your 0G key into the answer flow once beforehand so the prompt does not appear mid-demo —
-it is kept in that browser only.
+Try the whole thing once first. The first enclave call of a session can be slower, and 0G sometimes
+says it is briefly overloaded. The app waits that out by itself, but it is dull to film.
 
 ---
 
-## 0:00 — The situation (20s)
+## 0:00 The situation (20s)
 
-> "I'm renting a flat in Mumbai. The landlord wants to know I earn enough. So I send him my
-> payslip — which has my employer, my PAN, my bank account number, my home address and my exact
-> salary on it. He needs one bit. I gave him my life."
+> "I'm renting a flat in Mumbai. The landlord wants to know I earn enough. So I send him my payslip,
+> which has my employer, my PAN, my bank account and my exact salary on it. He needs one word. I
+> gave him my life."
 
-Scroll the landing page hero once. Don't explain it; it explains itself.
+Landing page, scroll once, press **Seal a document**.
 
-## 0:20 — Seal the document (30s)
+## 0:20 Seal it (25s)
 
-On `vault.html`. The payslip is already in the box.
+Connect Account 1. Drop the payslip. Name it, type a passphrase, press **Encrypt and seal**.
 
-> "It encrypts here, in my browser. The passphrase never leaves this page."
+> "It's read and encrypted here in my browser. What leaves is ciphertext, and it carries its own
+> expiry on Arkiv."
 
-Press **Encrypt here, then store**. Point at the output:
+## 0:45 Add a reviewer (25s)
 
-> "Two kilobytes of ciphertext, stored on Arkiv, with a death block on it. The document itself
-> expires — not a flag that says it should."
+The next step opens by itself. Paste the landlord's address, call them Landlord, pick **2 minutes**,
+press **Sign and get the link**. One wallet popup.
 
-## 0:50 — Issue a capability (30s)
+> "This is the only decision I make. Who, and for how long. One signature."
 
-> "Now I give the landlord a capability. Not a copy — a question."
+Copy the link. Press **Done**.
 
-Set: `landlord.eth`, **income**, threshold `50000`, 3 uses, **2 minutes**. Press
-**Issue the capability**. Point at the one line that matters:
+> "I won't be asked about any of his questions. My browser answers him from here."
 
-> "This is the only thing he will ever be able to ask. It's recorded verbatim, and its hash goes
-> into every receipt."
+## 1:10 He asks, and nobody clicks (50s) ← *the beat that sells it*
 
-## 1:20 — They ask, and they wait (40s) ← *the beat that makes it a protocol*
+In the second profile, Account 2, open the link. Send these one after another without waiting:
 
-Switch the wallet to **Account 2** and open the link. Press **Sign & ask**.
+1. **Can they afford rent of 25,000 a month?**
+2. **Are they still employed there?**
+3. **What is their PAN number?**
 
-> "He signs before he is told anything. That signature is what records that he asked."
+> "His wallet signed once, for this permission. Every question since is signed in his browser
+> before he's told anything, so there's a record that he asked. I'm not touching my wallet either."
 
-The screen says **Waiting on the owner's device**. Sit on it for a beat.
+Answers land: **Yes**, comfortably above. **Yes**. The third comes back **Unknown** or **No**, with no
+number in it.
 
-> "And now he waits — because he *cannot* answer. Only my device has the passphrase. If he could
-> answer his own question, I'd have handed him the document. That wait is the security property."
+> "That's all he gets. A word. Asking for my PAN doesn't get him my PAN."
 
-Switch back to **Account 1**. The inbox is lit: *"Someone is waiting on you."*
+Open a **Receipt**.
 
-> "It's in my inbox, on my device. And here is the part I like: the only machine on earth that can
-> answer this question is the one holding the passphrase."
+> "This names the enclave that answered, an Intel TDX machine on 0G, and says how much of the document
+> it read. It started with the fewest lines it could. The same model is served by providers with no
+> enclave at all, and an answer from one of those is thrown away."
 
-> "He asks for my exact salary. Refused — and look where it was refused."
+## 2:00 The record (15s)
 
-> "The question set he's allowed to ask isn't a row in my database. It's a **role on an ENS
-> name**. `hasRoles` said no, so the enclave was never called and my document was never
-> decrypted. Revoking his permission is revoking an ENS role. There's no application-level flag
-> to forget to check."
+Back to Account 1. Sidebar, **Questions**.
 
-Show the refusal landing in the ledger. **The owner can see what he tried to ask.**
+> "I can see everything he asked and what went back. A record, not a to-do list."
 
-## 2:00 — You answer (50s)
+## 2:15 The death (30s) ← *the thesis*
 
-Press **Answer it**. While it runs (about 6 seconds — don't hide the wait, narrate it):
+Sidebar, **Reviewers**. Wait for the countdown, or press **End** if you are short of time. Back in the
+landlord's tab, the box is gone.
 
-> "This is going into an Intel TDX enclave on 0G. Trust mode is private, which routes only to
-> TeeML providers and returns 503 rather than silently downgrading."
+> "It's not flagged or soft-deleted. The network stopped returning it, and every operation on it fails.
+> Keeping a permission alive is a public, signed act. Letting it die is silent."
 
-Point at the provider panel:
+## 2:45 Close (15s)
 
-> "The same model is also served by Baidu and Tencent with **no enclave at all**. We refuse any
-> provider that isn't TeeML and discard an answer that comes back from one."
-
-Watch the status line: **"in the enclave · 4 of 12 lines"**.
-
-> "My device decrypted it, narrowed it, and sent four lines. My employer, my PAN, my account
-> number and my address never entered the enclave. Not withheld from the landlord — withheld
-> from the model."
-
-Sign the answer. Switch to **Account 2**.
-
-> "YES. That is the whole of what he received — one bit, a request id, and the enclave's address.
-> No document, no figures, no key."
-
-Point at the request id and the provider address.
-
-## 2:50 — The death (50s) ← *the thesis*
-
-Back to the vault. The countdown is in **blocks**.
-
-> "That permission dies in ninety seconds. Not when a cron job gets round to it — the network
-> stops returning it."
-
-Let it hit zero on screen. Refresh the verifier window:
-
-> "Gone. Not flagged, not soft-deleted, not tombstoned. The query returns nothing and every
-> operation on it fails."
-
-Now the retention monitor:
-
-> "And here's the part I care about. Arkiv emits an event when someone **extends** a record, and
-> **nothing at all** when one dies. So keeping a permission alive is a signed, public,
-> timestamped act — and letting it die is silent. The burden of proof inverts. Retention becomes
-> the thing you have to explain."
-
-*(If you have 10 spare seconds: press **Extend 7d** on another grant and show the event appear.)*
-
-## 3:40 — Close (20s)
-
-> "Every company on earth promises to delete your data, and none of them can prove they did —
-> that's a theorem, not a complaint. Certified deletion is impossible with classical
-> information. So we stopped asking."
+> "Every company promises to delete your data, and none of them can prove they did. So we stopped
+> asking."
 >
-> **"He never had the document. There is nothing to delete, because he never held it."**
+> **"He never had the document. There's nothing to delete."**
 
 ---
 
-## Q&A — the five you will get
+## Questions you will get
+
+**"Does the owner have to be online?"**
+> Their browser does, and a background tab is enough. It's the only thing that can open the document,
+> so it's the only thing that can answer. It picks up by itself after a reload. If it's fully closed,
+> questions wait. We could answer while it's closed by giving our server the key, and then we'd be one
+> more company asking you to trust us.
+
+**"Does the enclave see the whole document?"**
+> Sometimes. It starts with the lines that look relevant and reads further only if those can't settle
+> the question, because a wrong "unknown" is useless. Every receipt says how much it read, and whatever
+> it reads, one word comes back.
 
 **"How is this different from ZK selective disclosure?"**
-> ZK needs an issuer to sign structured data. India's real documents are unsigned, unstructured
-> scans — salary slips, bank statements, rent agreements. There is no circuit for a photograph of
-> a payslip and no issuer signature to build one over. That's why every ZK credential project
-> went after the handful of documents that happen to be signed. A model in an enclave is the
-> first universal adapter from real paper to one bit.
+> ZK needs an issuer to sign structured data. India's real documents are unsigned, unstructured scans.
+> There's no circuit for a photograph of a payslip. A model in an enclave is the first universal adapter
+> from real paper to one word.
 
 **"What stops you faking a receipt?"**
-> Be direct: nothing at the router level, and we say so on the page. 0G exposes no signature
-> endpoint — we probed eight path shapes with a live request id, all 404. So we don't claim an
-> enclave signature. What we do claim is narrower and real: the provider address that answered,
-> checked live against the attested provider list, and **the verifier's own EIP-712 signature**,
-> which they produce before they're shown the answer. We can't prove the enclave said it. We can
-> prove the landlord asked it and was told — and that's the record DPDP First Schedule Part B
-> item 3 actually requires.
+> Nothing at the router level, and we say so. 0G exposes no signature endpoint: we probed eight paths
+> with a live request id, all 404. What we do prove is narrower and real: the provider address that
+> answered, checked live against the attested list, and the reviewer's own EIP-712 signature, produced
+> before they're shown the answer.
 
 **"Doesn't your server see the document?"**
-> No, and it cannot author a record either. The browser decrypts and calls the enclave directly —
-> 0G allowlists `localhost:5173` by exact origin, which is why the port matters. The server pays
-> the Arkiv gas because browser wallets are on Sepolia, not Arkiv's chain, and it verifies an
-> EIP-712 signature from the claimed party before every write. The operator pays for a transaction
-> and cannot author one. We tested that directly: a junk signature is 401, the landlord signing as
-> the owner is 401, and the asker trying to answer his own question is 403.
-
-**"What if the owner is offline?"**
-> Then the question waits. That is the honest consequence of only their device holding the key,
-> and we would rather have that than a design where someone else can answer for you. A production
-> version batches pre-authorised questions, which is a UX problem rather than a crypto one.
-
-**"Can it read a real document, not typed text?"**
-> Yes — drop a PDF or a photo. It is read in the browser, pdf.js for text layers and Tesseract for
-> scans. 0G does serve an image-capable TeeML model, so we *could* send the photo into the enclave
-> whole; we deliberately don't, because then the enclave sees the PAN and the address too. Reading
-> it on the device is what keeps it at four lines of twelve.
+> No, and it can't write a record on its own either. The browser decrypts and calls the enclave directly,
+> which is why port 5173 matters: 0G allowlists it by exact origin. The server pays Arkiv gas, and it
+> verifies a signature from the right party before each write. `npm run prove` tests that.
 
 **"Arkiv doesn't really delete the bytes though."**
-> Correct, and we never say it does — their docs don't claim it either. Expiry means queries stop
-> returning the entity and operations fail. The historical bytes are AES-GCM-256 ciphertext
-> encrypted in my browser with a passphrase that never left it. And notice the claim we're
-> making isn't "it was deleted" — it's "he never held it." That's the whole point of choosing
-> non-collection over deletion.
-
-**"Your ENS registry is a mock."**
-> The writable one is, because I can't grant roles on a name I don't control. It replicates the
-> real `ALL_ROLES` validation — `1<<40` legal, `0xF<<40` rejected — and the root-OR semantics,
-> so nothing passes there that Sepolia would refuse. The production gate deployed alongside it
-> reads the canonical ETHRegistry at `0xd4ebcb…a8b4`, and `ensIsLiveRegistry` is computed from
-> chain state, not declared. Both are labelled in the UI and the README.
+> Correct, and we never say it does. Expiry means queries stop returning the entity and operations fail.
+> The historical bytes are ciphertext encrypted with a passphrase that never left the browser.
 
 ---
 
@@ -197,9 +135,9 @@ Now the retention monitor:
 
 | Symptom | Do this |
 |---|---|
-| Enclave returns 503 | It found no free TeeML provider. Retry — **never** relax trust mode on stage. |
-| Enclave is slow | It's 5–10s. Narrate the wait; it's honest, and the provider panel gives you something to talk about. |
-| Browser can't reach 0G | You're not on port 5173. Everything else 403s. |
-| Arkiv write fails | `npm run preflight` — most likely the wallet needs tGLM from `hub.arkiv.network/faucet`. |
-| Wallet won't sign | Fall back to narrating the receipt panel; the answer path still works. Say the signature is what gates the reveal. |
-| Everything is on fire | `node --env-file=.env scripts/e2e.mjs` runs the whole loop headless in ~90s and prints every proof. |
+| A question sits on "Answering" for a while | 0G is briefly overloaded. It retries by itself. Never relax the trust mode. |
+| Reviewer sees "their browser is closed" | The owner's profile isn't on AskOnly. Open it, and it resumes without a passphrase. |
+| Browser can't reach 0G | You're not on port 5173. Everything else gets a 403. |
+| Red banner about older code | Stop `npm start` and run it again. |
+| Arkiv write fails | `npm run preflight`. Most likely the wallet needs tGLM from `hub.arkiv.network/faucet`. |
+| Port 5173 is busy | `npx kill-port 5173`, then `npm start`. |

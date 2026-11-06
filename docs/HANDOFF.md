@@ -1,159 +1,185 @@
-# AskOnly — handoff
+# AskOnly: handoff
 
-**Written for: the next Claude Code session.** Danish will open a fresh chat in this
-repo and point you here. Read this before touching anything.
+**Written for: the next Claude Code session.** Danish will open a fresh chat in this repo and point
+you here. Read this before touching anything.
 
-Deadline: **Sat 7 Nov 2026, 09:00 IST** (ETHGlobal Mumbai). Written 6 Nov, 21:55 IST.
+Deadline: **Sat 7 Nov 2026, 09:00 IST** (ETHGlobal Mumbai).
 
 ---
 
 ## What the product is
 
-Answer a question **about** a document without sending the document, with a
-permission that expires on-chain.
+Answer questions **about** a document without sending the document, under a permission that expires
+on-chain.
 
 - The owner seals a document (AES-GCM in their browser; the server stores ciphertext).
-- They issue a permission to one address: **their own words** for what may be asked,
-  N uses, an expiry.
-- The asker writes **their own question** in free text.
-- Only the owner's device can decrypt, so only it can answer. It picks the minimum
-  lines, asks a **TEE enclave**, and signs the verdict.
-- The asker receives `YES / NO / UNKNOWN` plus a receipt. No document, no key, no figures.
+- They **add a reviewer**: a wallet, and for how long. One EIP-712 signature. That is the only decision
+  the owner ever makes about them. Optionally they can limit what may be asked about.
+- The reviewer's wallet signs **once per permission** (an `AskKey`), letting a key in their browser sign
+  each question. After that, asking is no popup at all, and every question still traces to their wallet.
+- **The owner's browser answers by itself.** Only it can decrypt. Before it pays for anything it checks
+  the owner's signature over the permission and the asker's over the question, so it never takes the
+  server's word. It starts with the fewest lines that might answer (identifiers like a PAN held back as
+  `[withheld]`), asks a **TEE enclave**, widens to the whole document only if that cannot settle it, and
+  signs the verdict with the key the owner's signature named.
+- The reviewer receives `YES / NO / UNKNOWN` plus a receipt. No document, no key, no figures.
 
-**The owner is the enforcement point.** They read every question and can decline.
-That is why fixed categories were removed — a taxonomy was never load-bearing.
+**The one honest limit:** the owner's browser must be open somewhere, with the wallet connected (a
+background tab is fine; it resumes by itself after a reload, with no passphrase). If it is closed,
+questions wait. Answering with it closed means giving the server the key, which ends the claim that the
+server never sees the document. Danish was told this directly. Do not quietly change it.
 
 ---
 
-## Three guarantees, each with a script that proves it
+## Fixed on the night of 6 to 7 Nov, after an independent review
+
+An independent review found the honest path working and two core claims false. All of this is fixed
+and proven (`npm run prove:integrity`, `web/scripts/verify-check.mjs`):
+
+- **Any wallet could plant AskOnly entities.** A schema is only a tag. Every ledger read now filters on
+  `$creator` = the writing wallet (`.createdBy(ours())` in `src/arkiv/ledger.mjs`, 17 reads).
+- **A grant's signed expiry was ignored**, the lifetime came from unsigned `minutes`/`days`, and the same
+  signature could be posted again forever. Now `diesAt` is stored as signed, and the grant id is derived
+  from the signed message (`recordId` in `src/auth/typed.mjs`), so one signature makes one permission.
+  Grants are also refused over a document the signer does not own.
+- **Signed questions could be replayed.** `askedAt` must be within 10 minutes and is stored as signed;
+  the request id comes from the signed message. Line breaks are refused (they could forge a topic line).
+- **The owner's browser answered whatever `/api/inbox` listed.** It now verifies both signatures first
+  (`signedByOwner`, `signedByAsker` in `web/src/lib/askonly.js`).
+- **Verdicts were unchecked.** The server recomputes `answerHash = sha256({answer, band})`, takes only
+  listed bands, and refuses a signed refusal sent as an answer.
+- **A refusal could be written after the owner ended the permission**, and checks ran before the write
+  queue. Now every check runs again inside the write's turn (`prepare` in `settleAnswered`).
+- **Two tabs lost keys or paid twice.** Keys are now kept per document as a list, merged on disk, shared
+  between tabs over a BroadcastChannel, pinned while a reviewer is being added, and the lock is released
+  only after an answer in flight finishes.
+- Also: an expired delegation no longer blocks a named key; sessions end with the permissions that name
+  their key and carry `until`; a rejected 0G key is caught (Shell shows "Add 0G key", `KeySheet.jsx`);
+  the browser checks for a TeeML provider *before* sending lines; a paid stage is never paid twice;
+  "anything" scopes can never be turned down; Read always asks for the passphrase; the public hash is of
+  the ciphertext; the answer statement no longer says "the document was not sent".
+
+**Permissions issued before about 01:30 IST on 7 Nov cannot be answered any more**: their stored expiry
+is not the signed one, so the browser refuses to trust them, and says "a reviewer added before this
+update has to be added again". End them and add the reviewer again.
+
+---
+
+## Guarantees, each with a script that proves it
 
 | Command | Asserts |
 |---|---|
-| `npm run smoke` | it imports, boots, and answers (added after a SyntaxError shipped) |
-| `npm run prove` | two-party: 14/14, server pays every write and can author none |
-| `npm run prove:delegation` | on-call: 7/7, the session key is narrow |
+| `npm run smoke` | it imports, boots, and answers |
+| `npm run prove` | two-party: the server pays every write and can author none |
+| `npm run prove:delegation` | the fallback key for another browser is narrow |
+| `npm run prove:asking` | several questions at once, the limit holds, an end is an end, one signature is enough |
+| `npm run prove:forget` | only the owner can delete, only the document they named |
+| `npm run prove:integrity` | a signature does what was signed, once; the reviewer's ask key works on its own permission only |
+| `ASKONLY_URL=http://localhost:5174 node web/scripts/verify-check.mjs` | the owner's browser accepts real records and catches every change the server could make |
+| `npm run prove:accuracy` | the answers are right, against the real enclave (last run: 231/232, 0 leaks) |
 
-All three were **green at HEAD**. Re-run them after any change to
-`app/server.mjs`, `src/auth/typed.mjs`, or `src/arkiv/ledger.mjs`.
-
-They need a server. Start one on a spare port and point the script at it:
-
-```bash
-PORT=5208 node --env-file=.env app/server.mjs &
-ASKONLY_URL=http://localhost:5208 node --env-file=.env scripts/prove-whichever.mjs
-```
-
----
-
-## State at handoff
-
-Working tree **clean**. HEAD `622ec28`. **6 commits ahead of `origin/main` — not pushed.**
-Remote exists: `https://github.com/DanishVahora/eth_global.git`
-
-Recent work, newest first:
-
-- `622ec28` answer accuracy + ask-again + on-call delegation
-- `6cc0544` scope preview stopped looking like a question
-- `c4d6559` no fixed categories anywhere
-- `6868e4d` server wouldn't start; added `smoke`
-- `08dc182` free-text questions; server stopped seeing plaintext
-
----
-
-## What is NOT verified yet — start here
-
-**The on-call loop has never been watched answering a real question in a browser.**
-The protocol is proven 7/7 at the API level; the React loop in
-`web/src/components/OnCall.jsx` is not. Specifically unproven:
-
-1. `live.account.signTypedData(...)` — a viem local account signing EIP-712 **in the
-   browser**, without a wallet. Verify the server accepts that signature.
-2. The 2.5s poll actually seeing a pending request and completing the cycle.
-3. `selectLines` returning `anyMatch: false` → the "left for you" path.
-
-Also unverified in-browser: **Decline** (the `String(undefined)` → `"undefined"` bug was
-fixed and unit-checked, never clicked).
-
-### How to drive the browser headlessly
-
-MetaMask doesn't exist in headless Chrome, so there's a real signer:
-
-```bash
-node --env-file=.env scripts/testwallet.mjs     # :5310, two throwaway accounts
-curl "http://localhost:5310/select?i=0"         # 0 = Owner, 1 = Landlord
-```
-
-Inject it via `navigate_page`'s `initScript` as `window.ethereum` (EIP-1193 shim
-forwarding `eth_signTypedData_v4` to `POST :5310/sign`). **An in-page
-`location.reload()` drops the injection** — always re-navigate through
-`navigate_page` instead.
-
-CSS uppercases eyebrow labels, so `innerText` returns `YOU ARE ALLOWING`, not
-`You are allowing`. Match case-insensitively or you'll get a false negative.
+Run them against a **fresh server**, not Danish's: `PORT=5430 node --env-file=.env app/server.mjs`, then
+`ASKONLY_URL=http://localhost:5430`. Two processes writing with the one wallet collide on the nonce; a
+node that refuses a send is retried, but a send that times out is not (it may land), so a run that
+overlaps Danish using the app can fail with "Timed out while waiting for transaction". That is the
+harness, not the product.
 
 ---
 
 ## Still owed
 
-1. **Push to GitHub** — Danish approved a public repo. History was checked clean
-   (every `ark_live_` hit is a redaction regex or placeholder). 6 commits waiting.
-2. **Copy pass** — `docs/COPY-AUDIT.md`, 222 rows. Only the structural ones are done.
-   Danish wants developer-speak gone, voice "slangy / intellectual", must not read AI-generated.
-3. Four images per `docs/image-prompts.md`.
-4. Demo video, under 3 minutes.
-5. `arkiv/schema.md` still describes the templated-question model.
+1. **The ENS claim is not true of the code.** `docs/SUBMISSION.md` section 4.3 says `hasRoles` is checked in
+   the hot path. `mayAsk` is imported in `app/server.mjs` and never called. Danish has to decide: wire it
+   into `POST /api/request`, or change the claim.
+2. Commit, push, and flip the GitHub repo public at submission. Nothing from this session is committed.
+3. Demo video, under 3 minutes. Script in `docs/DEMO.md` (updated for the one-signature reviewer).
+4. `POST /api/vault` is still unsigned, so anyone can create a document under any owner's address (it
+   shows up in their list; they cannot open it, and nobody can add a reviewer to it but its owner).
+5. **There is no hosted demo.** On any origin but `localhost:5173` the browser cannot reach 0G, and the app
+   does not use `/api/ask/relay` or show the operator banner. `docs/SUBMISSION.md` §5 now says so.
+6. From the review, not done: the reviewer's page does not yet verify the answer's signature chain (the
+   server checks the hash, but an operator writing to Arkiv directly is caught only by reading the chain);
+   questions and verdicts are public on Arkiv (disclosed in the app and in §5, not encrypted); a locked
+   wallet stops answering (stated in the copy); the 0G key in localStorage is shared by wallets in one
+   browser; questions under an expired permission stay `pending` on chain for 7 days (the inbox hides them).
+7. Accuracy's one miss: an offer letter answered "yes" to "is she the vice president of human resources".
 
 ---
 
-## Hard-won facts — do not rediscover these
+## Hard-won facts: do not rediscover these
 
-- **0G CORS is an exact-origin allowlist including port.** `localhost:5173` works;
-  `5174`, `8080`, `4200` return **403**. This dictates the port layout: Vite on 5173
-  proxies `/api` to the API on 5174. A 204 preflight alone does not prove a real fetch works.
-- **EIP-712 domain is chain-agnostic** — `{name:"AskOnly", version:"1"}`, no `chainId`.
-  Pinning one made MetaMask throw "An internal error was received" when the user was on
-  another network. `ACCEPTED_DOMAINS` tolerates older tabs.
-- **Arkiv writes need typed value tags** — `str()`, `addr()`, `u64()`, `u256()`, `bytes()`.
-  A bare string into an `addr` column throws.
-- **`extendEntity` takes an object.** Positional args threw `InvalidExpiryError`, which
-  made a test pass for the wrong reason.
-- **Sepolia public RPC is load balanced** — back-to-back `eth_call`s can hit nodes at
-  different heights. Reads that must agree are pinned to one block in `src/chain/gate.mjs`.
-- **ENSv2 `hasRoles` takes `uint256`, not `bytes32`.** A nybble is a boolean: `1<<40` is
-  legal, `0xF<<40` reverts `EACInvalidRoleBitmap`.
-- **Select the columns you read.** Twice now a value was written to Arkiv and never
-  selected back: `grantsOf` dropped `note` (every ticket read "unavailable"),
-  `accessById` dropped `owner`/`asker` (every receipt unattributed). If a field reads
-  as `undefined`, check the `.select({...})` before suspecting the write.
+- **0G CORS is an exact-origin allowlist including port.** `localhost:5173` works; everything else gets a
+  **403**. Vite on 5173 proxies `/api` to the API.
+- **0G's 429 is `model_overloaded`**, upstream and brief, with a `retry-after`. Not a limit on us (500/min).
+  Nothing was read and nothing was spent, so it is a wait and never a failure.
+- **A free 0G key check:** `GET /v1/account/balance` answers an unknown key with **401** and a real one with
+  403. `/providers` and `/models` answer 200 to anything.
+- **EIP-712 domain is chain-agnostic**: `{name:"AskOnly", version:"1"}`, no `chainId`. Pinning one made
+  MetaMask throw when the user was on another network.
+- **Arkiv writes need typed value tags**: `str()`, `addr()`, `u64()`, `u256()`, `bytes()`. `addr("")` throws.
+- **A schema is a tag anyone can write.** Filter reads on `$creator` (`.createdBy()`, works on `count()` too).
+- **`wallet.executeBatch({creates, patches}, {gas})` is atomic.** Prefer it for anything that must land together.
+- **`ExpirationTime.fromSeconds(n)` needs a whole number of 2s blocks.**
+- **Each RPC call is about 200ms from here and a write makes 10 to 16 of them.** The clients poll every 500ms.
+- **viem puts the RPC URL in error messages**, and the RPC is on `arkiv.network`: never regex a whole
+  message for words like "network". Use `name`, `shortMessage`, `details`.
+- **`str` is 128 bytes.** A question or scope that does not fit is refused, never cut. The composer counts bytes.
+- **Select the columns you read.** Several times a value was written and never selected back.
+- **Sepolia public RPC is load balanced.** Reads that must agree are pinned to one block in `src/chain/gate.mjs`.
+- **ENSv2 `hasRoles` takes `uint256`, not `bytes32`**, and a nybble is a boolean: `1<<40` legal, `0xF<<40` reverts.
+- **A non-extractable CryptoKey is still on disk.** Chrome writes its bytes into the profile's IndexedDB
+  files. `keystore.js` says so; do not claim otherwise.
+
+### Driving the browser headlessly
+
+MetaMask does not exist in headless Chrome, so there is a real signer:
+
+```bash
+node --env-file=.env scripts/testwallet.mjs     # :5310, two throwaway accounts. 0 = Owner, 1 = Landlord
+```
+
+Inject it through `navigate_page`'s `initScript` as `window.ethereum`, forwarding `eth_signTypedData_v4` to
+`POST :5310/sign` (it records `window.__signs`, which is how "one popup" is checked). Its keys are new on
+every run, so restarting it orphans the test documents. Vite can trigger a full reload after some edits,
+which drops the injection, so re-navigate. The automation tool's `fill` does not work on a multi-line
+value in a textarea: set it through the native value setter and dispatch an `input` event.
+
+Verified this way at 01:55 IST: seal, add a reviewer (one `Grant`), the reviewer asks two questions (one
+`AskKey`, no more), both answered by the owner's tab in 16s, a reload resumes with no passphrase, End is
+one `Revoke`, Delete is one `Forget`, and Read asks for the passphrase.
 
 ---
 
 ## Shape of the code
 
 ```
-src/auth/typed.mjs      EIP-712: Grant, Request, Answer, Delegation + requireSignature
-src/arkiv/ledger.mjs    reads/writes; Vault Grant Access Refusal Request
-src/arkiv/schema.mjs    entity defs; fitStr() truncates on code-point boundary
-src/ask/questions.mjs   guessTopic/keywords/selectLines — matches bring neighbours (context:1)
-src/ask/enclave.mjs     0G call, assertTeeML(), pinned provider, parseAnswer()
-src/chain/gate.mjs      ENSv2 reads, block-pinned; roleTagFor() maps any scope to a bit
-app/server.mjs          API on 5174; pays gas, verifies signatures, never sees plaintext
+src/auth/typed.mjs      EIP-712: Grant, Request, AskKey, Answer, Delegation, Forget, Revoke, Presence; recordId
+src/arkiv/ledger.mjs    reads (all createdBy) and writes; settleAnswered / settleRefused re-check inside the queue
+src/arkiv/client.mjs    guardedWrite: one write at a time, waits out a pending nonce, resends only refused sends
+src/ask/questions.mjs   prompts, line selection, identifier masking, extractStages
+src/ask/enclave.mjs     server-side 0G call, assertTeeML(), parseAnswer()
+app/server.mjs          API; pays gas, verifies signatures, never sees plaintext
 
-web/src/pages/Vault.jsx         owner: seal, issue, tickets
-web/src/pages/Ask.jsx           asker: free-text question, receipt, "Ask another"
-web/src/components/Inbox.jsx    manual answer: unlock → line picker → enclave → sign
-web/src/components/OnCall.jsx   delegated answering  ← the unverified one
+web/src/lib/answering.jsx  THE ENGINE. Above the routes. Verifies, answers, keeps keys, resumes after reload.
+web/src/lib/keystore.js    keys in IndexedDB, and what that does and does not protect
+web/src/lib/askonly.js     crypto, the EIP-712 mirror, the direct enclave call, signedByOwner / signedByAsker
+web/src/lib/questions.js   MIRRORS src/ask/questions.mjs. Prompts must stay byte-identical.
+
+web/src/components/Shell.jsx       the top bar (restyled by the landing session), status, "Add 0G key"
+web/src/components/IssueSheet.jsx  add a reviewer: the only decision the owner makes
+web/src/pages/Ask.jsx              the reviewer's thread; Composer holds the AskKey
 ```
 
-`web/src/lib/questions.js` **mirrors** `src/ask/questions.mjs`. Change one, change both —
-they have drifted before.
+The landing page (`web/src/pages/Landing.jsx`, `web/src/landing.css`, `web/src/components/landing/*`,
+`web/src/lib/smooth.jsx`) and the app's visual layer were done by a second session, `eth-global-c8`.
 
 ---
 
 ## Working with Danish
 
-- He tests in his own Chrome and sends screenshots. Several real bugs came from him,
-  not from the tests. When he says something is broken, it is.
-- He asks for the agent harness and "no mistakes" — verify with a script or a browser
-  before reporting anything as working.
-- Do not claim something passes without having run it. He has caught that.
+- He tests in his own Chrome and sends screenshots. Several real bugs came from him, not from the tests.
+  When he says something is broken, it is.
+- He asks for the agent harness and "no mistakes": verify with a script or a browser before reporting
+  anything as working. He has caught claims that were not checked.
+- His bar is that it should feel like a real company's product: fewer things on screen, one obvious action,
+  no jargon. He said "reviewer" and "issuer", and the UI says "reviewer" and "you".

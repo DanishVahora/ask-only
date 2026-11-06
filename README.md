@@ -2,9 +2,8 @@
 
 **Answer the question. Never send the file.**
 
-A consent layer where a verifier never receives your document — only a signed answer to one
-permitted question — and where the permission is destroyed by the network rather than by a
-promise.
+A consent layer where a reviewer never receives your document, only signed answers to the questions
+they ask, and where the permission is destroyed by the network rather than by a promise.
 
 ETHGlobal Mumbai 2026 · From Scratch · MIT
 
@@ -13,24 +12,27 @@ ETHGlobal Mumbai 2026 · From Scratch · MIT
 ## The idea in one paragraph
 
 Your landlord wants to know you earn enough. He does not need your payslip, your PAN, your bank
-account or your address — he needs one bit. You put the document into AskOnly; it is read and
-encrypted **in your browser** and the ciphertext goes to Arkiv carrying its own death block. You
-grant the landlord a **capability**: one question, N uses, an expiry. He asks *"is monthly income
-above ₹50,000?"* — and he waits, because **only your device can answer**. Your device decrypts
-locally, sends a minimal extract to a model inside an Intel TDX enclave, and signs the result.
-He gets **YES**. He asks anything else and it is refused before it reaches your document. When
-the grant expires, Arkiv stops returning it and every operation on it fails.
+account or your address. He needs one word. You put the document into AskOnly; it is read and
+encrypted **in your browser** and the ciphertext goes to Arkiv carrying its own death block. You add
+the landlord as a reviewer: his wallet, and for how long. That one signature is the only decision you
+make. He asks whatever he likes in his own words, and **your browser answers by itself**, because only
+your device can open the document. It decrypts locally, sends the fewest lines that can answer to a
+model inside an Intel TDX enclave, and signs the result with a key your signature named. He gets
+**Yes**. When the time is up, Arkiv stops returning the permission and every operation on it fails.
 
 ## Two parties, and a server that cannot speak for either
 
 This is the part that makes it a protocol rather than a demo.
 
 ```
-VERIFIER                        ARKIV                      OWNER'S DEVICE
-   │ 1. connect wallet, sign the ask (EIP-712)                   │
+REVIEWER                        ARKIV                      OWNER'S BROWSER
+   │                                                             │ 0. one signature: who, how
+   │                                                             │    long, and the key that
+   │                                                             │    may answer until then
+   │ 1. connect wallet, sign the question (EIP-712)              │
    ├──────────► askonly.request  state=pending ─────────────────►│
-   │                                                             │ 2. it appears
-   │                                                             │    in their inbox
+   │                                                             │ 2. it sees it, with
+   │                                                             │    nothing for anyone to click
    │                                          3. decrypt locally │
    │                                             call the enclave│
    │                                             sign the answer │
@@ -39,8 +41,9 @@ VERIFIER                        ARKIV                      OWNER'S DEVICE
 ```
 
 Only the owner's device holds the passphrase, so only the owner's device can decrypt and ask.
-**The verifier can request an answer and never produce one.** That wait is the security property,
-not a missing feature.
+**The reviewer can request an answer and never produce one.** The owner decides once, when they add
+the reviewer, and their browser does the rest. It has to be open somewhere, even in a background tab.
+If it is closed, questions wait, and that is the price of nobody else being able to answer for you.
 
 Browser wallets are on Sepolia, not Arkiv's chain, and nobody will fund a second chain to try a
 demo — so **the server pays for every Arkiv write.** That is acceptable only because it cannot
@@ -151,6 +154,8 @@ Proof scripts, each of which measures rather than asserts:
 | Command | What it proves |
 |---|---|
 | `node --env-file=.env scripts/twoparty-prove.mjs` | **the two-party protocol end to end — that the server pays for every write and cannot author one** |
+| `npm run prove:integrity` | a signature does what was signed, once: no replays, no other expiry, no other verdict, no write after an end |
+| `ASKONLY_URL=http://localhost:5174 node web/scripts/verify-check.mjs` | the owner's browser checks what the server sends, and catches every change |
 | `node --env-file=.env scripts/arkiv-prove.mjs` | writes a vault, grant, receipt and refusal; measures the event firehose |
 | `node --env-file=.env scripts/arkiv-expiry.mjs <grantId>` | watches a permission die and shows every operation on it fail |
 | `node --env-file=.env scripts/arkiv-retention.mjs` | proves extension is loud and death is silent |
