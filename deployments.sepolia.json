@@ -1,0 +1,42 @@
+{
+  "chainId": 11155111,
+  "network": "sepolia",
+  "deployedAt": "2026-11-06T08:05:27.939Z",
+  "deployer": "0x4CA8176777D44B76235684b63334088C618994e4",
+  "contracts": {
+    "AskOnlyGate": {
+      "address": "0xc0Aa8494d24EB40878cE9B3505Fe3023C75CF204",
+      "gasUsed": "4700046",
+      "txHash": "0xd07f9950664ce39830a799a1a04280e6f7df5950e03a7f506e3ec9b1c8bbeac0",
+      "note": "Production gate. Reads the canonical ENSv2 ETHRegistry on every mayAsk."
+    },
+    "MockENSRegistry": {
+      "address": "0x782E197F213c7eb04D578459a3b42bE861aC2E88",
+      "gasUsed": "1485220",
+      "txHash": "0xb93f17f3be65c9bfee4462bdf9166b496907570958c8cf529894d62c5ccea675",
+      "note": "Demo registry. Replicates ENSv2 ALL_ROLES validation and root-OR semantics so a role can be granted on stage. NOT the canonical registry."
+    },
+    "AskOnlyGateDemo": {
+      "address": "0xEd17815fF920bc13A160ec504f9ef710B1E6ef14",
+      "gasUsed": "4700046",
+      "txHash": "0x8910d626ca203ca7e64bac2f8468459e9fef267202730965561263f513d0a6a1",
+      "note": "Demo gate, pointed at the demo registry, so refuse -> grant -> succeed can be performed live."
+    }
+  },
+  "ens": {
+    "ETHRegistry": "0xd4ebcbbdf463c9c45784603db0ddd499bc44a8b4",
+    "RootRegistry": "0xb458d6a3a77919449d03e7a6903c26827c1ec43f",
+    "UserRegistryImpl": "0x9bd8a88719068d09ecee662f36c0e3856708366a",
+    "VerifiableFactory": "0xda70306c98e97ece36f997a21368e53298572991",
+    "LabelStore": "0xed8246ff02203a4d4cb262bd78beaa7408a57cae",
+    "ETHRegistrar": "0xf633e7fc17e2bbe0d0965d18ec1821dcb754a3d3"
+  },
+  "ensIsLiveRegistry": true,
+  "questionSets": {
+    "income": "1099511627776",
+    "identity": "17592186044416",
+    "tenancy": "281474976710656",
+    "employment": "4503599627370496"
+  },
+  "explorer": "https://sepolia.etherscan.io/address/"
+}

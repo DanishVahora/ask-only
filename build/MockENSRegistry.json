@@ -1,0 +1,205 @@
+{
+  "contractName": "MockENSRegistry",
+  "sourceFile": "mocks/MockENSRegistry.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "EACInvalidRoleBitmap",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "RolesGranted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "RolesRevoked",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ALL_ROLES",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROOT_RESOURCE",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "grantRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "hasRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "anyId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
+      ],
+      "name": "revokeRoles",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "roles",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x6080604052348015600e575f5ffd5b5061033a8061001c5f395ff3fe608060405234801561000f575f5ffd5b5060043610610060575f3560e01c80631c3fc3eb14610064578063553635ba1461007e5780635adf4724146100a55780637c300586146100cc578063d3bf89b1146100ef578063dfa70d8b14610102575b5f5ffd5b61006b5f81565b6040519081526020015b60405180910390f35b61006b7f111111111111111111111111111111111111111111111111111111111111111181565b61006b6100b33660046102a8565b5f60208181529281526040808220909352908152205481565b6100df6100da3660046102d2565b610115565b6040519015158152602001610075565b6100df6100fd3660046102d2565b610183565b6100df6101103660046102d2565b6101e1565b5f61011f83610242565b5f848152602081815260408083206001600160a01b038616808552908352928190208054871790555185815286917f2815f3be1b5829417dda0ae10f702d501242b31f3779c432cce79d479aecfdd591015b60405180910390a35060019392505050565b5f61018d83610242565b505f928352602083815260408085206001600160a01b03939093168552918152818420547fad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb590915292205490911781161490565b5f6101eb83610242565b5f848152602081815260408083206001600160a01b03861680855290835292819020805487191690555185815286917f9a77cdfbf5a9127bc54eb2769aa9a37437f0a0821c3f79f0015acc87be16dd269101610171565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee81161561028a57604051630153d96960e51b81526004810182905260240160405180910390fd5b50565b80356001600160a01b03811681146102a3575f5ffd5b919050565b5f5f604083850312156102b9575f5ffd5b823591506102c96020840161028d565b90509250929050565b5f5f5f606084860312156102e4575f5ffd5b83359250602084013591506102fb6040850161028d565b9050925092509256fea26469706673582212203cbb0f86b4741163512f5a96aa0e8bd977c01818da4750e282744d978235da8364736f6c63430008260033"
+}

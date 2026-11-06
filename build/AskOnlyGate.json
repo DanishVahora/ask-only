@@ -1,0 +1,426 @@
+{
+  "contractName": "AskOnlyGate",
+  "sourceFile": "AskOnlyGate.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "contract IPermissionedRegistry",
+          "name": "_ens",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "_steward",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "InvalidRoleBitmap",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        }
+      ],
+      "name": "NotPermitted",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        }
+      ],
+      "name": "NotSteward",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        }
+      ],
+      "name": "UnknownQuestionSet",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        }
+      ],
+      "name": "AskRefused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "roleBit",
+          "type": "uint256"
+        }
+      ],
+      "name": "QuestionSetMapped",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "ALL_ROLES",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_ASK_EMPLOYMENT",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_ASK_IDENTITY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_ASK_INCOME",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ROLE_ASK_TENANCY",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ens",
+      "outputs": [
+        {
+          "internalType": "contract IPermissionedRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "roleBitmap",
+          "type": "uint256"
+        }
+      ],
+      "name": "isLegalRoleBitmap",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "label",
+          "type": "string"
+        }
+      ],
+      "name": "labelIdOf",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "internalType": "uint256",
+          "name": "roleBit",
+          "type": "uint256"
+        }
+      ],
+      "name": "mapQuestionSet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        }
+      ],
+      "name": "mayAsk",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "questionSet",
+          "type": "string"
+        }
+      ],
+      "name": "mayAskSet",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        }
+      ],
+      "name": "permittedSets",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "income",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "identity",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "tenancy",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "employment",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "asker",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "labelId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "questionSet",
+          "type": "bytes32"
+        }
+      ],
+      "name": "requireMayAsk",
+      "outputs": [],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "roleForSet",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "questionSet",
+          "type": "string"
+        }
+      ],
+      "name": "roleOf",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "steward",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x60c060405234801561000f575f5ffd5b50604051610c6b380380610c6b83398101604081905261002e916101b4565b6001600160a01b03808316608052811660a052604080518082019091526006815265696e636f6d6560d01b602082015261006e9065010000000000610105565b6040805180820190915260088152676964656e7469747960c01b602082015261009d9065100000000000610105565b60408051808201909152600781526674656e616e637960c81b60208201526100cc906601000000000000610105565b60408051808201909152600a815269195b5c1b1bde5b595b9d60b21b60208201526100fe906610000000000000610105565b50506101ec565b815160208301207feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee82161561015457604051636166315160e01b81526004810183905260240160405180910390fd5b5f8181526020818152604091829020849055905183815282917fd2f264c1dae390f1ff18a773a6f78770189ec539e28b94135e1bf3a10284dd8d910160405180910390a2505050565b6001600160a01b03811681146101b1575f5ffd5b50565b5f5f604083850312156101c5575f5ffd5b82516101d08161019d565b60208401519092506101e18161019d565b809150509250929050565b60805160a051610a346102375f395f81816101ff01526106ea01525f818161011901528181610339015281816103e60152818161047e0152818161051701526105e90152610a345ff3fe608060405234801561000f575f5ffd5b50600436106100fb575f3560e01c80638582157d11610093578063c373e4c611610063578063c373e4c6146102a8578063d3df7526146102b6578063e88789c0146102c9578063eac38ba6146102dc575f5ffd5b80638582157d146102405780638b9b2d0e14610274578063972e5e3314610282578063b54c1edc14610295575f5ffd5b8063553635ba116100ce578063553635ba146101b8578063555c890d146101ed578063637eea19146101fa57806383a9769814610221575f5ffd5b806317ee6313146100ff5780633f15457f1461011457806341e995dc14610158578063524d69db14610195575b5f5ffd5b61011261010d366004610819565b6102e9565b005b61013b7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b61016b610166366004610849565b610333565b6040805194151585529215156020850152901515918301919091521515606082015260800161014f565b6101a86101a3366004610819565b6105a1565b604051901515815260200161014f565b6101df7f111111111111111111111111111111111111111111111111111111111111111181565b60405190815260200161014f565b6101df6510000000000081565b61013b7f000000000000000000000000000000000000000000000000000000000000000081565b6101df61022f366004610871565b5f6020819052908152604090205481565b6101a861024e366004610871565b7feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee161590565b6101df660100000000000081565b6101df6102903660046108cd565b61066a565b6101df6102a33660046108cd565b61068b565b6101df661000000000000081565b6101a86102c436600461090c565b6106bc565b6101126102d7366004610962565b6106df565b6101df6501000000000081565b6102f48383836105a1565b61032e57604051629cc9d360e11b81526001600160a01b038416600482015260248101839052604481018290526064015b60405180910390fd5b505050565b5f5f5f5f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b031663d3bf89b18665010000000000896040518463ffffffff1660e01b815260040161038d939291906109aa565b602060405180830381865afa1580156103a8573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906103cc91906109c9565b60405163d3bf89b160e01b81529094506001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063d3bf89b19061042590889065100000000000908b906004016109aa565b602060405180830381865afa158015610440573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061046491906109c9565b60405163d3bf89b160e01b81529093506001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063d3bf89b1906104be9088906601000000000000908b906004016109aa565b602060405180830381865afa1580156104d9573d5f5f3e3d5ffd5b505050506040513d601f19601f820116820180604052508101906104fd91906109c9565b60405163d3bf89b160e01b81529092506001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063d3bf89b1906105579088906610000000000000908b906004016109aa565b602060405180830381865afa158015610572573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061059691906109c9565b905092959194509250565b5f818152602081905260408120548082036105d257604051633f138a2d60e21b815260048101849052602401610325565b60405163d3bf89b160e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063d3bf89b19061062290879085908a906004016109aa565b602060405180830381865afa15801561063d573d5f5f3e3d5ffd5b505050506040513d601f19601f8201168201806040525081019061066191906109c9565b95945050505050565b5f828260405161067b9291906109ef565b6040519081900390209392505050565b5f5f5f848460405161069e9291906109ef565b604051809103902081526020019081526020015f2054905092915050565b5f610661858585856040516106d29291906109ef565b60405180910390206105a1565b336001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000161461072a57604051630102389960e51b8152336004820152602401610325565b61032e83838080601f0160208091040260200160405190810160405280939291908181526020018383808284375f9201919091525085925061076a915050565b815160208301207feeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee8216156107b557604051636166315160e01b815260048101839052602401610325565b5f8181526020818152604091829020849055905183815282917fd2f264c1dae390f1ff18a773a6f78770189ec539e28b94135e1bf3a10284dd8d910160405180910390a2505050565b80356001600160a01b0381168114610814575f5ffd5b919050565b5f5f5f6060848603121561082b575f5ffd5b610834846107fe565b95602085013595506040909401359392505050565b5f5f6040838503121561085a575f5ffd5b610863836107fe565b946020939093013593505050565b5f60208284031215610881575f5ffd5b5035919050565b5f5f83601f840112610898575f5ffd5b50813567ffffffffffffffff8111156108af575f5ffd5b6020830191508360208285010111156108c6575f5ffd5b9250929050565b5f5f602083850312156108de575f5ffd5b823567ffffffffffffffff8111156108f4575f5ffd5b61090085828601610888565b90969095509350505050565b5f5f5f5f6060858703121561091f575f5ffd5b610928856107fe565b935060208501359250604085013567ffffffffffffffff81111561094a575f5ffd5b61095687828801610888565b95989497509550505050565b5f5f5f60408486031215610974575f5ffd5b833567ffffffffffffffff81111561098a575f5ffd5b61099686828701610888565b909790965060209590950135949350505050565b92835260208301919091526001600160a01b0316604082015260600190565b5f602082840312156109d9575f5ffd5b815180151581146109e8575f5ffd5b9392505050565b818382375f910190815291905056fea2646970667358221220a8dac2646b5d84c86c9c0cfc65f2fad024bc0a192ef20a2aaae9079f341cb55564736f6c63430008260033"
+}

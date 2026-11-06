@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Answer the question. Never send the file. A consent layer where the verifier never receives your document and the permission is destroyed by the network.",
   "license": "MIT",
-  "engines": { "node": ">=22.10.0" },
+  "engines": {
+    "node": ">=22.10.0"
+  },
   "scripts": {
     "preflight": "node --env-file=.env scripts/preflight.mjs",
     "arkiv:check": "node --env-file=.env scripts/arkiv-check.mjs",
@@ -13,8 +15,9 @@
     "ens:probe": "node --env-file=.env scripts/ens-probe.mjs",
     "zerog:check": "node --env-file=.env scripts/zerog-check.mjs",
     "compile": "node scripts/compile.mjs",
+    "chain": "hardhat node --port 8546",
     "deploy": "node --env-file=.env scripts/deploy.mjs",
-    "test": "node --test test/",
+    "test": "node --test test/*.test.mjs",
     "start": "node --env-file=.env app/server.mjs",
     "dev": "node --env-file=.env --watch app/server.mjs"
   },
@@ -23,6 +26,7 @@
     "viem": "^2.38.2"
   },
   "devDependencies": {
+    "hardhat": "^2.29.1",
     "solc": "^0.8.28"
   }
 }
