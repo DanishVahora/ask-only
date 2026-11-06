@@ -332,3 +332,24 @@
 .close { padding-bottom: var(--s12); }
 .foot { border-top: var(--bd); padding: var(--s6) 0 var(--s8); }
 .foot__in { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; }
+
+/* --- image slots ----------------------------------------------------------
+   Each figure deletes itself if its file is missing, so a half-finished image
+   set never shows as a row of dashed placeholder boxes advertising what was
+   not done. Add them one at a time; the page is correct at every step. */
+.shot { display: none; margin: var(--s10) auto 0; max-width: 940px; }
+.shot[data-ok] { display: block; }
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: var(--ratio, 16 / 9);
+  object-fit: cover;
+  border-radius: var(--r-lg);
+}
+/* On cream, multiply blends the photograph's ivory ground into the page, so no
+   rectangle shows even if the generated background is a shade off. Not applied
+   on a forest band - multiplying onto dark green would crush it. */
+.shot:not(.shot--dark) img { mix-blend-mode: multiply; filter: saturate(0.96); }
+.shot--dark img { border: 1px solid var(--line-dark); }
+@media (max-width: 760px) { .shot { margin-top: var(--s8); } }
