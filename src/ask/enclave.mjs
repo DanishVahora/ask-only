@@ -25,7 +25,7 @@
  * because a team that does not check will claim enclave execution it is not getting.
  */
 
-import { systemPrompt, userPrompt, selectLines, extractFrom, guessTopic, sha256hex } from "./questions.mjs";
+import { systemPrompt, userPrompt, extractStages, isAnyTopic, cleanBand, WHYS, NEEDS_WIDENING, sha256hex } from "./questions.mjs";
 
 export const DEFAULT_MODEL = "glm-5.3";
 
@@ -148,33 +148,58 @@ export async function assertTeeML(model = DEFAULT_MODEL, apiKey) {
  * Ask the enclave one permitted question about one document.
  *
  * The caller has already established that the verifier holds the ENS role. This
- * function's job is to narrow the document, send it to a verified enclave, and
- * come back with something a receipt can be built from.
+ * function's job is to show a verified enclave as little of the document as will
+ * settle the question, and come back with something a receipt can be built from.
+ *
+ * It widens on doubt, exactly as the browser does: the narrowest extract first, and
+ * the whole document only if that came back unknown or unsure. Only an unknown from
+ * the whole document is reported as unknown. An out-of-scope verdict stops at once.
  *
  * @param plaintext   the decrypted document - in memory only, never logged,
  *                    never written to disk, never returned to the verifier
  * @param question    free text, in whatever words the asker used
  * @param topic       optional coarse topic, for choosing which lines qualify
+ * @param scope       optional, the owner's own words for what may be asked about
  * @param apiKey      the OWNER's 0G key. In local mode this comes from the
  *                    owner's own browser and the server never sees it.
  */
-export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_MODEL, signal }) {
+export async function ask({ plaintext, question, topic, scope = "", apiKey, model = DEFAULT_MODEL, signal }) {
   if (!apiKey) throw new EnclaveError("no 0G key provided", "no-key");
 
   if (!question?.trim()) throw new EnclaveError("no question was asked", "no-question");
-  const chosen = topic ?? guessTopic(question);
-  const sel = selectLines(plaintext, question, chosen);
-  const { extract, keptLines, droppedLines, totalLines } = extractFrom(sel.lines, sel.suggested);
-  if (!keptLines) {
-    throw new EnclaveError(
-      "no line in this document bears on that question - refusing to send it, because a model " +
-        "given nothing relevant will answer from the question alone",
-      "no-relevant-lines",
-    );
-  }
+  const stages = extractStages(plaintext, question, scope, { topic });
+  // There is nothing to read, so nothing to ask. This is not "no relevant lines": a
+  // document with any text in it always has at least one stage, the whole of it.
+  if (!stages.length) throw new EnclaveError("this document has no text in it", "empty-document");
 
   const attested = await assertTeeML(model, apiKey);
 
+  let result = null;
+  let spentUsd = 0;
+  let spentMs = 0;
+  for (const [index, stage] of stages.entries()) {
+    const reply = await askOneStage({ question, stage, scope, apiKey, model, signal, attested });
+    spentUsd += reply.costUsd;
+    spentMs += reply.latencyMs;
+    result = {
+      ...reply,
+      latencyMs: spentMs,
+      costUsd: spentUsd,
+      minimisation: {
+        keptLines: stage.keptLines,
+        droppedLines: stage.totalLines - stage.keptLines,
+        totalLines: stage.totalLines,
+        stage: index + 1,
+        stages: stages.length,
+      },
+    };
+    if (!NEEDS_WIDENING(reply)) break;
+  }
+  return result;
+}
+
+/** One call to the enclave with one extract. Every check on the reply lives here. */
+async function askOneStage({ question, stage, scope, apiKey, model, signal, attested }) {
   const body = {
     model,
     max_tokens: MIN_MAX_TOKENS,
@@ -183,7 +208,7 @@ export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt() },
-      { role: "user", content: userPrompt(question, extract) },
+      { role: "user", content: userPrompt(question, stage.extract, undefined, scope) },
     ],
   };
 
@@ -213,11 +238,14 @@ export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_
       transport = e;
       res = null;
     }
-    // 503 = no free TeeML provider. 429 = we asked too fast, which happens the
-    // moment anyone clicks twice. Both are worth waiting out; neither is a
-    // reason to relax the trust mode.
+    // 503 = no free TeeML provider. 429 = the model is briefly overloaded, and 0G
+    // says for how long. Both are worth waiting out; neither is a reason to relax the
+    // trust mode.
     if (res && res.status !== 503 && res.status !== 429) break;
-    if (attempt < 2) await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    if (attempt < 2) {
+      const told = Number(res?.headers.get("retry-after"));
+      await new Promise((r) => setTimeout(r, told > 0 ? Math.min(told, 30) * 1000 : 1500 * (attempt + 1)));
+    }
   }
 
   if (!res) {
@@ -289,16 +317,24 @@ export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_
     );
   }
 
-  const answerJson = JSON.stringify({ answer, band: parsed.band ?? "" });
+  // Both of these are read by people, and both have a short closed list of things they
+  // may say. Anything else does not go out, whatever the model was talked into.
+  const band = cleanBand(parsed.band);
+  const rawWhy = String(parsed.why ?? "").trim().toLowerCase();
+  const why = WHYS.includes(rawWhy) ? rawWhy : "";
+  const answerJson = JSON.stringify({ answer, band });
 
   return {
     question,
     questionHash: await sha256hex(question),
     answer,
-    band: String(parsed.band ?? ""),
-    confidence: Number(parsed.confidence ?? 0),
-    why: String(parsed.why ?? "").slice(0, 90),
+    band,
+    // Left null when the model gave none, so that its silence does not read as doubt.
+    confidence: parsed.confidence == null ? null : Number(parsed.confidence),
+    why,
     answerHash: await sha256hex(answerJson),
+    // A topic that limits nothing cannot be strayed from, whatever the model said.
+    outOfScope: !isAnyTopic(scope) && parsed.in_scope === false,
 
     // provenance - what we can actually show
     requestId: trace.request_id ?? json.id ?? null,
@@ -314,9 +350,6 @@ export async function ask({ plaintext, question, topic, apiKey, model = DEFAULT_
     latencyMs,
     costUsd: Number(trace.billing?.total_cost_usd_micro ?? 0) / 1e6,
     usage: json.usage ?? null,
-
-    // what the enclave was allowed to see
-    minimisation: { keptLines, droppedLines, totalLines },
 
     // the non-TeeML providers serving the same model, for the UI's benefit
     nonTeeProviders: attested.nonTee.map((p) => ({ name: p.name, address: p.address })),

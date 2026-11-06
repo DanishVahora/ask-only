@@ -20,10 +20,23 @@ import { hexToBytes } from "viem";
  * Tagging everything - not just the ambiguous ones - keeps that class of bug
  * impossible rather than merely unlikely. */
 import { Vault, Grant, Access, Refusal, Request, fitStr, QUESTION_SETS } from "./schema.mjs";
-import { guardedWrite, expiry, scrub, safeError, txLink } from "./client.mjs";
+import { guardedWrite, expiry, scrub, safeError, txLink, account } from "./client.mjs";
 
 const PAGE = 100; // MAX_LIMIT
 const now = () => BigInt(Date.now());
+
+/* Everything AskOnly reads, it wrote.
+ *
+ * A schema is only a name, and any wallet can tag an entity with it, so a query by
+ * schema alone returned whatever anybody planted: a question nobody signed in someone's
+ * inbox, which their browser then paid to answer; a receipt with an earlier timestamp
+ * that replaced the real verdict; a grant this wallet cannot patch, which made deleting
+ * the document revert. So every read here is limited to entities this server's own
+ * wallet created. `$creator`, unlike `$owner`, cannot be transferred. */
+const PUBLISHED_WRITER = "0x4CA8176777D44B76235684b63334088C618994e4";
+let writer = null;
+const ours = () =>
+  (writer ??= process.env.ASKONLY_WRITER || (process.env.DEPLOYER_PRIVATE_KEY ? account().address : PUBLISHED_WRITER));
 
 /* =========================================================== WRITES ===== */
 
@@ -66,8 +79,9 @@ export async function putVault(ctx, { owner, label, docKind, sha256, iv, cipher,
  * there is no revocation flag to forget to check and no cron to run.
  */
 export async function issueGrant(ctx, {
-  vaultId, owner, verifier, verifierName, questionSet,
+  grantId = null, diesAt = null, vaultId, owner, verifier, verifierName, questionSet,
   usesAllowed = 3, minutes = null, days = 7, threshold = "", note = "", labelId = 0n, ownerSig = new Uint8Array(),
+  sessionKey = "",
 }) {
   /* The scope is the owner's own words; `questionSet` is only a coarse tag
    * derived from them, used to pick an ENSv2 role bit. Rejecting a tag for
@@ -76,9 +90,14 @@ export async function issueGrant(ctx, {
    * general bit instead of failing the write. */
   const set = QUESTION_SETS[questionSet] ?? QUESTION_SETS.income;
 
-  const grantId = `g-${crypto.randomUUID().slice(0, 8)}`;
-  const expiration = minutes ? expiry.minutes(minutes) : expiry.days(days);
-  const lifeMs = minutes ? minutes * 60_000 : days * 86_400_000;
+  /* The server passes the expiry the owner signed. It used to come from `minutes` and
+   * `days`, which nobody signs, so the signed time was checked and then ignored. Arkiv
+   * counts whole 2s blocks from the block this lands in, so the entity outlives
+   * `diesAt` by a block or two, and every check that matters reads `diesAt`.
+   * `minutes` and `days` remain for the scripts that call this directly. */
+  const until = Number(diesAt ?? Date.now() + (minutes ? minutes * 60_000 : days * 86_400_000));
+  const expiration = expiry.seconds(Math.max(2, Math.ceil((until - Date.now()) / 2000) * 2));
+  grantId ??= `g-${crypto.randomUUID().slice(0, 8)}`;
 
   const res = await guardedWrite(
     ctx,
@@ -96,11 +115,12 @@ export async function issueGrant(ctx, {
           usesAllowed: u64(BigInt(usesAllowed)),
           usesSpent: u64(0n),
           issuedAt: u64(now()),
-          diesAt: u64(now() + BigInt(lifeMs)),
+          diesAt: u64(BigInt(until)),
           roleBit: u256(set.roleBit),
           labelId: u256(BigInt(labelId)),
           threshold: str(fitStr(threshold)),
           note: str(fitStr(note)),
+          sessionKey: str(fitStr(sessionKey)),
           ownerSig: bytes(ownerSig),
         },
         { expiration },
@@ -172,8 +192,53 @@ export async function revokeGrant(ctx, entityKey) {
   return { state: "revoked" };
 }
 
-/** The receipt. `askerSig` is the verifier's own EIP-712 signature - without it
- *  the answer is never released to their screen. */
+const accessValues = (accessId, a) => ({
+  accessId: str(accessId),
+  grantId: str(a.grantId),
+  vaultId: str(a.vaultId),
+  owner: addr(a.owner),
+  asker: addr(a.asker),
+  askerName: str(fitStr(a.askerName ?? "")),
+  questionHash: str(fitStr(a.questionHash)),
+  answer: str(fitStr(a.answer)),
+  answerHash: str(fitStr(a.answerHash)),
+  requestId: str(fitStr(a.requestId ?? "")),
+  provider: addr(a.provider),
+  model: str(fitStr(a.model)),
+  trustMode: str(fitStr(a.trustMode ?? "private")),
+  verification: str(fitStr(a.verification ?? "request-id-only")),
+  at: u64(now()),
+  question: str(fitStr(a.question)),
+  band: str(fitStr(a.band ?? "")),
+  teeType: str(fitStr(a.teeType ?? "")),
+  linesSeen: str(fitStr(a.linesSeen ?? "")),
+  latencyMs: u64(BigInt(a.latencyMs ?? 0)),
+  askerSig: bytes(a.askerSig ?? new Uint8Array()),
+});
+
+const refusalValues = (refusalId, r) => ({
+  refusalId: str(refusalId),
+  grantId: str(fitStr(r.grantId ?? "none")),
+  owner: addr(r.owner),
+  asker: addr(r.asker),
+  questionHash: str(fitStr(r.questionHash)),
+  reason: str(fitStr(r.reason)),
+  at: u64(now()),
+  question: str(fitStr(r.question)),
+  detail: str(fitStr(r.detail ?? "")),
+});
+
+/** What spending one use of a permission changes. */
+const spendSet = ({ usesSpent, usesAllowed }) => {
+  const next = BigInt(usesSpent) + 1n;
+  const set = { usesSpent: u64(next) };
+  if (next >= BigInt(usesAllowed)) set.state = str("spent");
+  return set;
+};
+
+/** The receipt. `askerSig` holds the signature of whoever answered, over the Answer:
+ *  the key the permission named, the owner's wallet, or a key they delegated to. The
+ *  column's name is older than that. */
 export async function recordAccess(ctx, a) {
   const accessId = `a-${crypto.randomUUID().slice(0, 8)}`;
   const res = await guardedWrite(
@@ -181,28 +246,7 @@ export async function recordAccess(ctx, a) {
     ({ gas }) =>
       ctx.wallet.createEntity(
         Access,
-        {
-          accessId: str(accessId),
-          grantId: str(a.grantId),
-          vaultId: str(a.vaultId),
-          owner: addr(a.owner),
-          asker: addr(a.asker),
-          askerName: str(fitStr(a.askerName ?? "")),
-          questionHash: str(fitStr(a.questionHash)),
-          answer: str(fitStr(a.answer)),
-          answerHash: str(fitStr(a.answerHash)),
-          requestId: str(fitStr(a.requestId ?? "")),
-          provider: addr(a.provider),
-          model: str(fitStr(a.model)),
-          trustMode: str(fitStr(a.trustMode ?? "private")),
-          verification: str(fitStr(a.verification ?? "request-id-only")),
-          at: u64(now()),
-          question: str(fitStr(a.question)),
-          band: str(fitStr(a.band ?? "")),
-          teeType: str(fitStr(a.teeType ?? "")),
-          latencyMs: u64(BigInt(a.latencyMs ?? 0)),
-          askerSig: bytes(a.askerSig ?? new Uint8Array()),
-        },
+        accessValues(accessId, a),
         // The receipt outlives the capability on purpose: the permission must die,
         // the record of its use must not. Capped at MAX_LIFETIME either way.
         { expiration: expiry.days(a.keepDays ?? 180) },
@@ -220,23 +264,81 @@ export async function recordRefusal(ctx, r) {
     ({ gas }) =>
       ctx.wallet.createEntity(
         Refusal,
-        {
-          refusalId: str(refusalId),
-          grantId: str(fitStr(r.grantId ?? "none")),
-          owner: addr(r.owner),
-          asker: addr(r.asker),
-          questionHash: str(fitStr(r.questionHash)),
-          reason: str(fitStr(r.reason)),
-          at: u64(now()),
-          question: str(fitStr(r.question)),
-          detail: str(fitStr(r.detail ?? "")),
-        },
+        refusalValues(refusalId, r),
         { expiration: expiry.days(r.keepDays ?? 180) },
         { gas },
       ),
     { label: "recordRefusal" },
   );
   return { refusalId, entityKey: res.entityKey, txHash: res.txHash, tx: txLink(res.txHash) };
+}
+
+/**
+ * Settle a question in one transaction: the receipt, the question's new state, and
+ * the use spent.
+ *
+ * These were three separate writes, so an answer took about 18 seconds and a failure
+ * part-way could leave a receipt with the question still open, or an answer that
+ * never counted against the limit. A batch is atomic: all of it lands or none of it.
+ */
+export async function settleAnswered(ctx, { prepare, access }) {
+  const accessId = `a-${crypto.randomUUID().slice(0, 8)}`;
+  let grant = null;
+  const res = await guardedWrite(
+    ctx,
+    async ({ gas }) => {
+      /* Read again inside this write's turn. Checked before joining the queue, an answer
+       * could land after the permission was revoked, and two answers under one
+       * permission both wrote "one use spent". */
+      const fresh = await prepare();
+      grant = fresh.grant;
+      return ctx.wallet.executeBatch(
+        {
+          creates: [{ schema: Access, values: accessValues(accessId, access), expiration: expiry.days(180) }],
+          patches: [
+            {
+              schema: Request,
+              entityKey: fresh.request.entityKey,
+              set: { state: str("answered"), decidedAt: u64(now()), accessId: str(fitStr(accessId)) },
+            },
+            { schema: Grant, entityKey: grant.entityKey, set: spendSet(grant) },
+          ],
+        },
+        { gas },
+      );
+    },
+    { operations: 3, label: "settleAnswered" },
+  );
+  return { accessId, entityKey: res.createdEntities[0], txHash: res.txHash, tx: txLink(res.txHash), grant };
+}
+
+/** The same, for a question turned down. It spends a use: each one cost the owner a call. */
+export async function settleRefused(ctx, { prepare, refusal }) {
+  const refusalId = `r-${crypto.randomUUID().slice(0, 8)}`;
+  let grant = null;
+  const res = await guardedWrite(
+    ctx,
+    async ({ gas }) => {
+      const fresh = await prepare();
+      grant = fresh.grant;
+      return ctx.wallet.executeBatch(
+        {
+          creates: [{ schema: Refusal, values: refusalValues(refusalId, refusal), expiration: expiry.days(180) }],
+          patches: [
+            {
+              schema: Request,
+              entityKey: fresh.request.entityKey,
+              set: { state: str("refused"), decidedAt: u64(now()), accessId: str("") },
+            },
+            { schema: Grant, entityKey: grant.entityKey, set: spendSet(grant) },
+          ],
+        },
+        { gas },
+      );
+    },
+    { operations: 3, label: "settleRefused" },
+  );
+  return { refusalId, txHash: res.txHash, tx: txLink(res.txHash), grant };
 }
 
 /* ------------------------------------------------------------------ requests
@@ -246,7 +348,7 @@ export async function recordRefusal(ctx, r) {
    -------------------------------------------------------------------------- */
 
 export async function openRequest(ctx, r) {
-  const requestId = `q-${crypto.randomUUID().slice(0, 8)}`;
+  const requestId = r.requestId ?? `q-${crypto.randomUUID().slice(0, 8)}`;
   const res = await guardedWrite(
     ctx,
     ({ gas }) =>
@@ -262,11 +364,14 @@ export async function openRequest(ctx, r) {
           questionSet: str(r.questionSet),
           questionHash: str(fitStr(r.questionHash)),
           state: str("pending"),
-          askedAt: u64(now()),
+          // As the asker signed it, so the signature can be checked against what is stored.
+          askedAt: u64(BigInt(r.askedAt ?? Date.now())),
           decidedAt: u64(0n),
           accessId: str(""),
           question: str(fitStr(r.question)),
           askerSig: bytes(r.askerSig ?? new Uint8Array()),
+          askerKey: str(fitStr(r.askerKey ?? "")),
+          askKeySig: bytes(r.askKeySig ?? new Uint8Array()),
         },
         // A request must not outlive the permission it is made under.
         { expiration: r.minutes ? expiry.minutes(r.minutes) : expiry.days(r.days ?? 7) },
@@ -293,13 +398,14 @@ export async function decideRequest(ctx, entityKey, { state, accessId = "" }) {
 }
 
 /** The owner's inbox: what is waiting on them right now. */
-export async function pendingFor(reader, owner, limit = 25) {
+export async function pendingFor(reader, owner, limit = 100) {
   const { entities } = await reader
     .select({
       $key: true, requestId: true, grantId: true, vaultId: true, asker: true, askerName: true,
-      questionSet: true, question: true, questionHash: true, askedAt: true, state: true,
+      questionSet: true, question: true, questionHash: true, askedAt: true, state: true, askerSig: true,
+      askerKey: true, askKeySig: true,
     })
-    .from(Request)
+    .from(Request).createdBy(ours())
     .where(and(eq("owner", addr(owner)), eq("state", str("pending"))))
     .orderBy(desc("askedAt"))
     .limit(Math.min(limit, PAGE))
@@ -316,6 +422,10 @@ export async function pendingFor(reader, owner, limit = 25) {
     questionHash: val(e, "questionHash"),
     askedAt: Number(val(e, "askedAt")),
     state: val(e, "state"),
+    // So the owner's browser can check the asker really asked, rather than take our word.
+    askerSig: val(e, "askerSig") ?? "",
+    askerKey: val(e, "askerKey") ?? "",
+    askKeySig: val(e, "askKeySig") ?? "",
   }));
 }
 
@@ -324,11 +434,13 @@ export async function pendingFor(reader, owner, limit = 25) {
 export async function requestById(reader, requestId) {
   const { entities } = await reader
     .select({
+      // askerName was written and never selected here, so POST /api/answer read
+      // undefined and every ledger row showed a bare address instead of the name.
       $key: true, requestId: true, grantId: true, vaultId: true, owner: true, asker: true,
-      questionSet: true, question: true, questionHash: true, state: true, askedAt: true,
-      decidedAt: true, accessId: true,
+      askerName: true, questionSet: true, question: true, questionHash: true, state: true,
+      askedAt: true, decidedAt: true, accessId: true,
     })
-    .from(Request)
+    .from(Request).createdBy(ours())
     .where(eq("requestId", str(requestId)))
     .limit(1)
     .fetch();
@@ -341,6 +453,7 @@ export async function requestById(reader, requestId) {
     vaultId: val(e, "vaultId"),
     owner: val(e, "owner"),
     asker: val(e, "asker"),
+    askerName: val(e, "askerName"),
     questionSet: val(e, "questionSet"),
     question: val(e, "question"),
     questionHash: val(e, "questionHash"),
@@ -349,6 +462,100 @@ export async function requestById(reader, requestId) {
     decidedAt: Number(val(e, "decidedAt")),
     accessId: val(e, "accessId"),
   };
+}
+
+/**
+ * Every question asked under one permission, newest first.
+ *
+ * A permission is worth several questions, so "the" request was never the right
+ * model: the asker's page held one id in sessionStorage and hid the form until
+ * it resolved. This is what lets several be open at once and survive a reload.
+ */
+export async function requestsOfGrant(reader, grantId, limit = 50) {
+  const { entities } = await reader
+    .select({
+      $key: true, requestId: true, grantId: true, vaultId: true, asker: true, askerName: true,
+      question: true, questionHash: true, state: true, askedAt: true, decidedAt: true, accessId: true,
+    })
+    .from(Request).createdBy(ours())
+    .where(eq("grantId", str(grantId)))
+    .orderBy(desc("askedAt"))
+    .limit(Math.min(limit, PAGE))
+    .fetch();
+  return entities.map((e) => ({
+    entityKey: e.$key,
+    requestId: val(e, "requestId"),
+    grantId: val(e, "grantId"),
+    vaultId: val(e, "vaultId"),
+    asker: val(e, "asker"),
+    askerName: val(e, "askerName"),
+    question: val(e, "question"),
+    questionHash: val(e, "questionHash"),
+    state: val(e, "state"),
+    askedAt: Number(val(e, "askedAt")),
+    decidedAt: Number(val(e, "decidedAt")),
+    accessId: val(e, "accessId"),
+  }));
+}
+
+/** The receipts under one permission, for joining onto its questions. */
+export async function accessesOfGrant(reader, grantId, limit = 50) {
+  const { entities } = await reader
+    .select({
+      $key: true, accessId: true, answer: true, band: true, requestId: true, provider: true,
+      model: true, verification: true, teeType: true, linesSeen: true, latencyMs: true, at: true,
+      questionHash: true, answerHash: true, askerSig: true,
+    })
+    .from(Access).createdBy(ours())
+    .where(eq("grantId", str(grantId)))
+    .orderBy(desc("at"))
+    .limit(Math.min(limit, PAGE))
+    .fetch();
+  return entities.map((e) => ({
+    accessId: val(e, "accessId"),
+    answer: val(e, "answer"),
+    band: val(e, "band"),
+    requestId: val(e, "requestId"),
+    provider: val(e, "provider"),
+    model: val(e, "model"),
+    verification: val(e, "verification"),
+    teeType: val(e, "teeType"),
+    linesSeen: val(e, "linesSeen"),
+    latencyMs: Number(val(e, "latencyMs")),
+    at: Number(val(e, "at")),
+    questionHash: val(e, "questionHash"),
+    answerHash: val(e, "answerHash"),
+    answerSig: val(e, "askerSig") ?? "",
+  }));
+}
+
+/** How many questions under one permission are still waiting. Counted, not listed:
+ *  a list stopped at 50, and a permission allows 100. */
+export async function openCount(reader, grantId) {
+  return Number(
+    await reader
+      .count()
+      .from(Request).createdBy(ours())
+      .where(and(eq("grantId", str(grantId)), eq("state", str("pending"))))
+      .fetch(),
+  );
+}
+
+/** Why questions under one permission were turned down. */
+export async function refusalsOfGrant(reader, grantId, limit = 50) {
+  const { entities } = await reader
+    .select({ $key: true, questionHash: true, reason: true, detail: true, at: true })
+    .from(Refusal).createdBy(ours())
+    .where(eq("grantId", str(grantId)))
+    .orderBy(desc("at"))
+    .limit(Math.min(limit, PAGE))
+    .fetch();
+  return entities.map((e) => ({
+    questionHash: val(e, "questionHash"),
+    reason: val(e, "reason"),
+    detail: val(e, "detail"),
+    at: Number(val(e, "at")),
+  }));
 }
 
 /** One receipt, by id - what the verifier reads once the owner has answered. */
@@ -362,9 +569,9 @@ export async function accessById(reader, accessId) {
       $key: true, accessId: true, grantId: true, owner: true, asker: true,
       answer: true, band: true, question: true,
       questionHash: true, answerHash: true, requestId: true, provider: true, model: true,
-      trustMode: true, verification: true, teeType: true, latencyMs: true, at: true,
+      trustMode: true, verification: true, teeType: true, linesSeen: true, latencyMs: true, at: true,
     })
-    .from(Access)
+    .from(Access).createdBy(ours())
     .where(eq("accessId", str(accessId)))
     .limit(1)
     .fetch();
@@ -407,8 +614,9 @@ export async function liveGrant(reader, grantId) {
       grantId: true, vaultId: true, owner: true, verifier: true, verifierName: true,
       questionSet: true, state: true, usesAllowed: true, usesSpent: true,
       issuedAt: true, diesAt: true, roleBit: true, labelId: true, threshold: true, note: true,
+      sessionKey: true, ownerSig: true,
     })
-    .from(Grant)
+    .from(Grant).createdBy(ours())
     .where(eq("grantId", str(grantId)))
     .limit(1)
     .fetch();
@@ -432,6 +640,8 @@ export async function liveGrant(reader, grantId) {
     labelId: BigInt(val(e, "labelId")).toString(),
     threshold: val(e, "threshold"),
     note: val(e, "note"),
+    sessionKey: val(e, "sessionKey"),
+    ownerSig: val(e, "ownerSig") ?? "",
   };
 }
 
@@ -441,9 +651,9 @@ export async function grantsOf(reader, owner, limit = 50) {
       $key: true, $expiresAt: true,
       grantId: true, vaultId: true, verifierName: true, verifier: true, questionSet: true,
       state: true, usesAllowed: true, usesSpent: true, diesAt: true, issuedAt: true,
-      threshold: true, note: true,
+      threshold: true, note: true, sessionKey: true, ownerSig: true,
     })
-    .from(Grant)
+    .from(Grant).createdBy(ours())
     .where(eq("owner", addr(owner)))
     .orderBy(desc("issuedAt"))
     .limit(Math.min(limit, PAGE))
@@ -463,6 +673,38 @@ export async function grantsOf(reader, owner, limit = 50) {
     issuedAt: Number(val(e, "issuedAt")),
     threshold: val(e, "threshold"),
     note: val(e, "note"),
+    sessionKey: val(e, "sessionKey"),
+    // The owner's signature over these exact terms, which their browser checks before
+    // it answers anything under them.
+    ownerSig: val(e, "ownerSig") ?? "",
+  }));
+}
+
+/** Permissions issued TO an address. "Ask someone" was a dead end without a link. */
+export async function grantsFor(reader, verifier, limit = 50) {
+  const { entities } = await reader
+    .select({
+      $key: true, grantId: true, vaultId: true, owner: true, verifier: true, verifierName: true,
+      state: true, usesAllowed: true, usesSpent: true, diesAt: true, issuedAt: true, note: true,
+    })
+    .from(Grant).createdBy(ours())
+    .where(eq("verifier", addr(verifier)))
+    .orderBy(desc("issuedAt"))
+    .limit(Math.min(limit, PAGE))
+    .fetch();
+  return entities.map((e) => ({
+    entityKey: e.$key,
+    grantId: val(e, "grantId"),
+    vaultId: val(e, "vaultId"),
+    owner: val(e, "owner"),
+    verifier: val(e, "verifier"),
+    verifierName: val(e, "verifierName"),
+    state: val(e, "state"),
+    usesAllowed: Number(val(e, "usesAllowed")),
+    usesSpent: Number(val(e, "usesSpent")),
+    diesAt: Number(val(e, "diesAt")),
+    issuedAt: Number(val(e, "issuedAt")),
+    note: val(e, "note"),
   }));
 }
 
@@ -471,7 +713,7 @@ export async function grantsOf(reader, owner, limit = 50) {
 export async function liveGrantsOf(reader, owner, limit = 50) {
   const { entities } = await reader
     .select({ $key: true, $expiresAt: true, grantId: true, verifierName: true, questionSet: true, diesAt: true })
-    .from(Grant)
+    .from(Grant).createdBy(ours())
     .where(and(eq("owner", addr(owner)), eq("state", str("live"))))
     .orderBy(asc("diesAt"))
     .limit(Math.min(limit, PAGE))
@@ -489,7 +731,7 @@ export async function liveGrantsOf(reader, owner, limit = 50) {
 export async function vaultsOf(reader, owner, limit = 50) {
   const { entities } = await reader
     .select({ $key: true, $expiresAt: true, vaultId: true, label: true, docKind: true, bytesLen: true, sha256: true, createdAt: true, state: true })
-    .from(Vault)
+    .from(Vault).createdBy(ours())
     .where(and(eq("owner", addr(owner)), eq("state", str("live"))))
     .orderBy(desc("createdAt"))
     .limit(Math.min(limit, PAGE))
@@ -511,7 +753,7 @@ export async function vaultsOf(reader, owner, limit = 50) {
 export async function vaultCipher(reader, vaultId) {
   const { entities } = await reader
     .select({ $key: true, vaultId: true, iv: true, cipher: true, sha256: true, label: true, docKind: true })
-    .from(Vault)
+    .from(Vault).createdBy(ours())
     .where(eq("vaultId", str(vaultId)))
     .limit(1)
     .fetch();
@@ -529,6 +771,63 @@ export async function vaultCipher(reader, vaultId) {
   };
 }
 
+/** Who owns a vault, and is it still live. Separate from vaultCipher because
+ *  an ownership check should not pull a 128 KiB ciphertext over the wire. */
+export async function vaultMeta(reader, vaultId) {
+  const { entities } = await reader
+    .select({ $key: true, vaultId: true, owner: true, state: true, label: true, bytesLen: true })
+    .from(Vault).createdBy(ours())
+    .where(eq("vaultId", str(vaultId)))
+    .limit(1)
+    .fetch();
+  const e = entities[0];
+  if (!e) return null;
+  return {
+    entityKey: e.$key,
+    vaultId: val(e, "vaultId"),
+    owner: val(e, "owner"),
+    state: val(e, "state"),
+    label: val(e, "label"),
+    bytesLen: Number(val(e, "bytesLen") ?? 0),
+  };
+}
+
+/**
+ * Delete a document.
+ *
+ * Overwrites the entity's `cipher` with zero bytes in the same write that
+ * retires it, so the network stops serving the ciphertext and `vaultsOf`, which
+ * filters on state === "live", stops listing it.
+ *
+ * What this cannot do is rewrite history. The create transaction is still in old
+ * blocks, so the encrypted bytes survive there, as unreadable as they ever were
+ * without the passphrase. Same boundary as expiry: the landing page says "we do
+ * not erase bytes from history", and this must not claim otherwise.
+ */
+export async function retireVault(ctx, entityKey, grantKeys = []) {
+  await guardedWrite(
+    ctx,
+    ({ gas }) =>
+      ctx.wallet.executeBatch(
+        {
+          patches: [
+            {
+              schema: Vault,
+              entityKey,
+              set: { state: str("retired"), cipher: bytes(new Uint8Array()), bytesLen: u64(0n) },
+            },
+            // The permissions end in the same transaction, so there is no moment
+            // where a deleted document can still be asked about.
+            ...grantKeys.map((k) => ({ schema: Grant, entityKey: k, set: { state: str("revoked") } })),
+          ],
+        },
+        { gas },
+      ),
+    { operations: 1 + grantKeys.length, label: "retireVault" },
+  );
+  return { state: "retired" };
+}
+
 /** "Who asked about me." The question the whole product exists to answer. */
 export async function accessesOf(reader, owner, limit = 100) {
   const { entities } = await reader
@@ -536,9 +835,9 @@ export async function accessesOf(reader, owner, limit = 100) {
       $key: true, accessId: true, grantId: true, asker: true, askerName: true,
       question: true, questionHash: true, answer: true, band: true, answerHash: true,
       requestId: true, provider: true, model: true, trustMode: true, verification: true,
-      teeType: true, latencyMs: true, at: true,
+      teeType: true, linesSeen: true, latencyMs: true, at: true,
     })
-    .from(Access)
+    .from(Access).createdBy(ours())
     .where(eq("owner", addr(owner)))
     .orderBy(desc("at"))
     .limit(Math.min(limit, PAGE))
@@ -560,6 +859,7 @@ export async function accessesOf(reader, owner, limit = 100) {
     trustMode: val(e, "trustMode"),
     verification: val(e, "verification"),
     teeType: val(e, "teeType"),
+    linesSeen: val(e, "linesSeen"),
     latencyMs: Number(val(e, "latencyMs")),
     at: Number(val(e, "at")),
   }));
@@ -568,7 +868,7 @@ export async function accessesOf(reader, owner, limit = 100) {
 export async function refusalsOf(reader, owner, limit = 50) {
   const { entities } = await reader
     .select({ $key: true, refusalId: true, grantId: true, asker: true, question: true, reason: true, detail: true, at: true })
-    .from(Refusal)
+    .from(Refusal).createdBy(ours())
     .where(eq("owner", addr(owner)))
     .orderBy(desc("at"))
     .limit(Math.min(limit, PAGE))
@@ -586,7 +886,7 @@ export async function refusalsOf(reader, owner, limit = 50) {
 }
 
 export async function countLiveGrants(reader) {
-  return reader.count().from(Grant).where(eq("state", str("live"))).fetch();
+  return reader.count().from(Grant).createdBy(ours()).where(eq("state", str("live"))).fetch();
 }
 
 export { scrub };

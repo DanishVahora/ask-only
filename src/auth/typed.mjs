@@ -18,7 +18,7 @@
  * author one.
  */
 
-import { verifyTypedData, recoverTypedDataAddress, getAddress } from "viem";
+import { verifyTypedData, recoverTypedDataAddress, getAddress, hashTypedData } from "viem";
 
 /**
  * Deliberately chain-agnostic: name and version only.
@@ -59,6 +59,16 @@ export const ACCEPTED_DOMAINS = [
 ];
 
 /**
+ * The id of the record a signature creates, taken from what was signed.
+ *
+ * Ids used to be random, so one signature could be posted again and again, each time
+ * making a fresh permission or a fresh question. Now a signed message makes one record,
+ * whatever bytes the signature arrives in.
+ */
+export const recordId = (prefix, types, primaryType, message) =>
+  `${prefix}-${hashTypedData({ domain, types, primaryType, message }).slice(2, 14)}`;
+
+/**
  * A grant. Signed by the data principal. This is the capability itself:
  * who may ask, what they may ask, how often, and until when.
  */
@@ -70,6 +80,9 @@ export const GrantTypes = {
     { name: "question", type: "string" },
     { name: "usesAllowed", type: "uint256" },
     { name: "diesAt", type: "uint256" },
+    // The key in the owner's browser that may answer under this permission. One
+    // signature grants the right and starts the answering, for exactly that long.
+    { name: "sessionKey", type: "address" },
     { name: "statement", type: "string" },
   ],
 };
@@ -83,6 +96,25 @@ export const RequestTypes = {
     { name: "grantId", type: "string" },
     { name: "questionHash", type: "string" },
     { name: "askedAt", type: "uint256" },
+    { name: "statement", type: "string" },
+  ],
+};
+
+/**
+ * An ASK KEY: the reviewer letting a key in their own browser sign questions under
+ * one permission, so that asking is not a wallet popup every time. The owner's side
+ * has had this since the start; the asker clicked "sign" for every question.
+ *
+ * Narrow on purpose: one grantId, and the grant's own diesAt, which must match it
+ * exactly, so it cannot be carried to another permission or outlive this one. The
+ * question is still the reviewer's: the request stores this signature next to the
+ * key's, so anyone can trace it back to their wallet.
+ */
+export const AskKeyTypes = {
+  AskKey: [
+    { name: "grantId", type: "string" },
+    { name: "sessionKey", type: "address" },
+    { name: "diesAt", type: "uint256" },
     { name: "statement", type: "string" },
   ],
 };
@@ -117,7 +149,8 @@ export const AnswerTypes = {
  * is scoped to ONE vault and expires - it cannot be used to answer about
  * another document, and it dies on its own.
  *
- * The key is generated in the browser, never persisted, and gone on reload.
+ * The key is generated in the browser and kept in its IndexedDB until the delegation
+ * ends. web/src/lib/keystore.js says what that does and does not protect against.
  */
 export const DelegationTypes = {
   Delegation: [
@@ -128,16 +161,56 @@ export const DelegationTypes = {
   ],
 };
 
-/** The human-readable line each signer sees in their wallet. */
-export const STATEMENTS = {
-  grant: "I allow this one question to be asked about my document, until it expires.",
-  request: "I am asking this question, and I accept that it is recorded against me.",
-  answer: "My device answered this question. The document was not sent.",
-  delegation:
-    "I let this browser answer questions about this one document on my behalf, until it expires.",
+/**
+ * DELETING a sealed document, and ENDING a permission.
+ *
+ * Both used to be a route that took an entityKey from whoever POSTed it, or did
+ * not exist. Anybody could end anybody's permission. The owner signs the id, and
+ * the server checks that signature against the owner recorded on the entity
+ * before it spends any gas on the write.
+ */
+export const ForgetTypes = {
+  Forget: [
+    { name: "vaultId", type: "string" },
+    { name: "statement", type: "string" },
+  ],
 };
 
-export function grantMessage({ vaultId, verifier, questionSet, question, usesAllowed, diesAt }) {
+export const RevokeTypes = {
+  Revoke: [
+    { name: "grantId", type: "string" },
+    { name: "statement", type: "string" },
+  ],
+};
+
+/**
+ * "This browser is answering right now", from the key a permission names. Lets the
+ * person asking be told whether to expect a reply in seconds. Only a hint, and it
+ * writes nothing, but only the owner's browser can claim it.
+ */
+export const PresenceTypes = {
+  Presence: [
+    { name: "grantId", type: "string" },
+    { name: "at", type: "uint256" },
+  ],
+};
+
+/** The human-readable line each signer sees in their wallet. */
+export const STATEMENTS = {
+  grant: "I allow this person to ask about my document until this expires, and my browser to answer them.",
+  request: "I am asking this question, and I accept that it is recorded against me.",
+  answer: "My device answered this question. Only the enclave read any of the document.",
+  delegation:
+    "I let this browser answer questions about this one document on my behalf, until it expires.",
+  forget:
+    "I am deleting this document. Anyone who could ask about it can no longer ask.",
+  revoke: "I am ending this permission. They can ask nothing more.",
+  askKey: "I let this browser sign my questions under this one permission, until it expires.",
+};
+
+const NO_KEY = "0x0000000000000000000000000000000000000000";
+
+export function grantMessage({ vaultId, verifier, questionSet, question, usesAllowed, diesAt, sessionKey }) {
   return {
     vaultId: String(vaultId),
     verifier: getAddress(verifier),
@@ -145,8 +218,13 @@ export function grantMessage({ vaultId, verifier, questionSet, question, usesAll
     question: String(question),
     usesAllowed: BigInt(usesAllowed),
     diesAt: BigInt(diesAt),
+    sessionKey: getAddress(sessionKey || NO_KEY),
     statement: STATEMENTS.grant,
   };
+}
+
+export function presenceMessage({ grantId, at }) {
+  return { grantId: String(grantId), at: BigInt(at) };
 }
 
 export function requestMessage({ grantId, questionHash, askedAt }) {
@@ -158,12 +236,35 @@ export function requestMessage({ grantId, questionHash, askedAt }) {
   };
 }
 
+export function askKeyMessage({ grantId, sessionKey, diesAt }) {
+  return {
+    grantId: String(grantId),
+    sessionKey: getAddress(sessionKey),
+    diesAt: BigInt(diesAt),
+    statement: STATEMENTS.askKey,
+  };
+}
+
 export function delegationMessage({ vaultId, sessionKey, diesAt }) {
   return {
     vaultId: String(vaultId),
     sessionKey: getAddress(sessionKey),
     diesAt: BigInt(diesAt),
     statement: STATEMENTS.delegation,
+  };
+}
+
+export function forgetMessage({ vaultId }) {
+  return {
+    vaultId: String(vaultId),
+    statement: STATEMENTS.forget,
+  };
+}
+
+export function revokeMessage({ grantId }) {
+  return {
+    grantId: String(grantId),
+    statement: STATEMENTS.revoke,
   };
 }
 
@@ -255,6 +356,10 @@ export const clientSpec = {
     Request: RequestTypes.Request,
     Answer: AnswerTypes.Answer,
     Delegation: DelegationTypes.Delegation,
+    Forget: ForgetTypes.Forget,
+    Revoke: RevokeTypes.Revoke,
+    Presence: PresenceTypes.Presence,
+    AskKey: AskKeyTypes.AskKey,
   },
   statements: STATEMENTS,
 };

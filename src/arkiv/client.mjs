@@ -47,6 +47,17 @@ export class ArkivError extends Error {
 export const safeError = (msg) => new ArkivError(msg);
 export const sanitizedFailure = (e) => new ArkivError(scrub(e), undefined);
 
+/** A write that was refused because what it depended on changed while it waited its
+ *  turn: the question was answered, or the permission ended. Carries the status the
+ *  route answers with. */
+export class StateError extends ArkivError {
+  constructor(message, status) {
+    super(message);
+    this.name = "StateError";
+    this.status = status;
+  }
+}
+
 export function account() {
   const pk = process.env.DEPLOYER_PRIVATE_KEY;
   if (!pk) throw safeError("DEPLOYER_PRIVATE_KEY is not set - see .env.example");
@@ -79,9 +90,11 @@ export function clients(acct = undefined, key = undefined) {
       timeout: 20_000,
       fetchOptions: { cache: "no-store", redirect: "error" },
     });
-    const reader = createPublicClient({ chain, transport, cacheTime: 0 });
+    // Blocks are 2s. viem's default of polling every 4s for a receipt turned a 2s
+    // write into anything up to 7s, and an answer is the moment someone is waiting.
+    const reader = createPublicClient({ chain, transport, cacheTime: 0, pollingInterval: 500 });
     const wallet = acct
-      ? createWalletClient({ account: acct, chain, transport, cacheTime: 0 })
+      ? createWalletClient({ account: acct, chain, transport, cacheTime: 0, pollingInterval: 500 })
       : null;
     return { chain, reader, wallet };
   } catch (e) {
@@ -127,7 +140,50 @@ export async function preflight(reader, address) {
  * - Caps at half the block gas limit so a bad floor fails fast and locally
  *   instead of being mined into a revert.
  */
-export async function guardedWrite(
+/* One write at a time, for the whole process.
+ *
+ * Every write in this app comes from one wallet, and the check below refuses to
+ * send while a transaction is still pending. That was fine with one person
+ * clicking. With several questions open, a tab answering by itself and someone
+ * else asking at the same moment, the second write failed outright with
+ * "reconcile the pending nonce". So writes queue, and a pending nonce is waited
+ * out rather than reported as an error. */
+let writeQueue = Promise.resolve();
+const NONCE_WAIT_MS = 20_000;
+
+/* Balance and block limit move slowly and each is a 200ms round trip, so they are
+ * checked once a minute rather than before every write. */
+const FUNDS_EVERY_MS = 60_000;
+let fundsCheckedAt = 0;
+let gasCeiling = 0n;
+
+/* Whether a failed send can go again without risking a second copy.
+ *
+ * No hash coming back does not on its own mean nothing was sent. A request that timed
+ * out, or a connection that dropped, may still have reached the node, and sending again
+ * would then write the same record twice. Only a node that answered with an error
+ * definitely did not take it. */
+function safeToResend(e) {
+  if (e?.name !== "EntityMutationError" || e.txHash !== undefined) return false;
+  let c = e;
+  for (let depth = 0; c && depth < 8; depth += 1, c = c.cause) {
+    // The error's own name and details, not its whole message: viem puts the RPC URL in
+    // the message, and the RPC lives on arkiv.network.
+    const said = [c.name, c.shortMessage, c.details, c.code].filter(Boolean).join(" ") || String(c.message ?? "");
+    if (/timeout|timed out|took too long|fetch failed|socket hang up|econnreset|econnrefused/i.test(said)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+export function guardedWrite(ctx, fn, opts) {
+  const run = writeQueue.then(() => writeOne(ctx, fn, opts));
+  writeQueue = run.catch(() => {});
+  return run;
+}
+
+async function writeOne(
   { reader, wallet },
   fn,
   { operations = 1, label = "write" } = {},
@@ -136,27 +192,47 @@ export async function guardedWrite(
   const address = wallet.account.address;
 
   try {
-    const [latest, pending] = await Promise.all([
-      reader.getTransactionCount({ address, blockTag: "latest" }),
-      reader.getTransactionCount({ address, blockTag: "pending" }),
-    ]);
-    if (pending !== latest) {
-      throw safeError(`reconcile the pending nonce before writing (${label})`);
+    const deadline = Date.now() + NONCE_WAIT_MS;
+    for (;;) {
+      const [latest, pending] = await Promise.all([
+        reader.getTransactionCount({ address, blockTag: "latest" }),
+        reader.getTransactionCount({ address, blockTag: "pending" }),
+      ]);
+      if (pending === latest) break;
+      if (Date.now() > deadline) {
+        throw safeError(`reconcile the pending nonce before writing (${label})`);
+      }
+      await new Promise((r) => setTimeout(r, 750));
     }
 
-    const balance = await reader.getBalance({ address });
-    if (balance === 0n) {
-      throw safeError(`${address} has 0 tGLM - fund it at ${FAUCET} before writing`);
+    if (Date.now() - fundsCheckedAt > FUNDS_EVERY_MS) {
+      const [balance, block] = await Promise.all([
+        reader.getBalance({ address }),
+        reader.getBlock({ blockTag: "latest" }),
+      ]);
+      if (balance === 0n) {
+        throw safeError(`${address} has 0 tGLM - fund it at ${FAUCET} before writing`);
+      }
+      gasCeiling = block.gasLimit / 2n;
+      fundsCheckedAt = Date.now();
     }
 
     const floor = 1_000_000n + 400_000n * BigInt(Math.max(0, operations - 1));
-    const block = await reader.getBlock({ blockTag: "latest" });
-    const ceiling = block.gasLimit / 2n;
-    if (floor > ceiling) {
-      throw safeError(`gas floor ${floor} exceeds half the block limit (${ceiling})`);
+    if (floor > gasCeiling) {
+      throw safeError(`gas floor ${floor} exceeds half the block limit (${gasCeiling})`);
     }
 
-    return await fn({ gas: floor });
+    // A transaction the node refused can safely go again: another process using this
+    // wallet took the nonce, or a node hiccuped. One that may have been sent cannot,
+    // because it may yet land, and a second copy would be a duplicate record.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await fn({ gas: floor });
+      } catch (e) {
+        if (!safeToResend(e) || attempt >= 3) throw e;
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      }
+    }
   } catch (e) {
     if (e instanceof ArkivError) throw e;
     throw sanitizedFailure(e);
@@ -169,6 +245,7 @@ export async function guardedWrite(
  *  without a deliberate, publicly observable renewal. That ceiling is the
  *  point, not a limitation: silence means death, so retention takes a signed act. */
 export const expiry = {
+  seconds: (n) => ExpirationTime.fromSeconds(n), // a whole number of 2s blocks
   minutes: (n) => ExpirationTime.fromMinutes(n),
   hours: (n) => ExpirationTime.fromHours(n),
   days: (n) => ExpirationTime.fromDays(n),

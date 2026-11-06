@@ -47,7 +47,7 @@ export const Vault = defineSchema("askonly.vault", {
   owner: addr().indexed(),
   docKind: str().indexed(), // payslip | bank | rent | identity | other
   state: str().indexed(), // live | retired
-  sha256: str().indexed(), // hash of the PLAINTEXT, so the owner can prove which document
+  sha256: str().indexed(), // hash of the CIPHERTEXT. Of the plaintext, a short document could be guessed
   bytesLen: u64().indexed(), // ciphertext length, shown in the UI
   createdAt: u64().indexed(), // ms
 
@@ -73,22 +73,24 @@ export const Grant = defineSchema("askonly.grant", {
   usesAllowed: u64().indexed(),
   usesSpent: u64().indexed(),
   issuedAt: u64().indexed(), // ms
-  diesAt: u64().indexed(), // ms - mirrors $expiresAt for display and sorting
+  diesAt: u64().indexed(), // ms, exactly as the owner signed it. $expiresAt follows it to the block
 
   roleBit: u256(), // the ENSv2 EAC role the verifier must hold
   labelId: u256(), // the ENS resource the role is checked against
   threshold: str(), // e.g. "50000" - the figure inside the question, never the document's
   note: str(), // what the owner was told they were granting
+  sessionKey: str(), // the key in the owner's browser that may answer under this grant
   ownerSig: bytes(), // EIP-712 signature of the principal over the grant terms
 });
 
 /* ---------------------------------------------------------------------------
    3. ACCESS - the receipt, and the genuinely novel artifact here.
 
-   Not "we say he asked X". The answer is released to the verifier's screen only
-   against `askerSig`, their own EIP-712 signature over
-   (grantId, questionHash, answerHash, requestId). So the verifier cannot be told
-   the answer without signing for having asked.
+   Not "we say he asked X". The reviewer signed the question before being told
+   anything (that signature is on the Request), and the owner's side signs the answer:
+   `askerSig`, a name older than its meaning, holds the answering key's EIP-712
+   signature over (requestId, grantId, questionHash, answerHash, enclaveRequestId),
+   and answerHash is sha256 of {answer, band}, checked before anything is written.
 
    0G does NOT sign the answer - GET /v1/proxy/signature/{chatID} does not exist
    on the Router (8 paths probed with a live chatID, all 404). So provider identity
@@ -115,8 +117,9 @@ export const Access = defineSchema("askonly.access", {
   question: str(), // canonical question text
   band: str(), // coarse band if the question set allows one. Never an exact figure.
   teeType: str(), // TDX / dstack, as reported by /providers
+  linesSeen: str(), // "3/17": how much of the document the enclave was shown
   latencyMs: u64(),
-  askerSig: bytes(), // EIP-712 signature of the VERIFIER over the receipt
+  askerSig: bytes(), // the answering key's EIP-712 signature over the Answer
 });
 
 /* ---------------------------------------------------------------------------
@@ -132,7 +135,7 @@ export const Refusal = defineSchema("askonly.refusal", {
   owner: addr().indexed(),
   asker: addr().indexed(),
   questionHash: str().indexed(),
-  reason: str().indexed(), // no-ens-role | out-of-set | uses-exhausted | expired | revoked
+  reason: str().indexed(), // owner-declined | out-of-scope | no-ens-role | uses-exhausted | expired
   at: u64().indexed(),
 
   question: str(),
@@ -164,12 +167,14 @@ export const Request = defineSchema("askonly.request", {
   // pending | answered | refused | withdrawn. A positive enum, because the
   // network has no NOT and "not yet answered" is otherwise inexpressible.
   state: str().indexed(),
-  askedAt: u64().indexed(),
+  askedAt: u64().indexed(), // ms, as the asker signed it, so the signature can be checked
   decidedAt: u64().indexed(), // 0 until decided
   accessId: str().indexed(), // the receipt, once answered
 
   question: str(),
   askerSig: bytes(), // EIP-712 - the verifier signed BEFORE being told anything
+  askerKey: str(), // a key the asker's wallet let sign questions under this permission, or ""
+  askKeySig: bytes(), // the asker's wallet over that AskKey, which traces askerSig back to them
 });
 
 /** Question sets -> ENSv2 EAC role bits.

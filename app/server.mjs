@@ -16,8 +16,8 @@
  *   the router's CORS preflight rejects non-localhost origins with 403. So the
  *   answer has to be relayed through here, and that makes whoever runs this
  *   process a trusted party who sees the extract. /api/mode reports
- *   `operatorSeesExtract: true` in that case and the UI shows a permanent
- *   banner. We would rather say that than quietly be it.
+ *   `operatorSeesExtract: true` in that case. No screen reads it yet, so the
+ *   banner that ought to say so does not exist: do not host this until it does.
  *
  * The ciphertext posted to /api/vault is already encrypted by the browser. This
  * process never has the document key and never attempts to decrypt.
@@ -28,20 +28,23 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-import { clients, account, readOnly, preflight, scrub, FAUCET } from "../src/arkiv/client.mjs";
+import { clients, account, readOnly, preflight, scrub, FAUCET, StateError } from "../src/arkiv/client.mjs";
 import {
-  putVault, issueGrant, liveGrant, grantsOf, vaultsOf, vaultCipher,
-  recordAccess, recordRefusal, accessesOf, refusalsOf, spendGrant, extendGrant, revokeGrant,
-  openRequest, decideRequest, pendingFor, requestById, accessById,
+  putVault, issueGrant, liveGrant, grantsOf, grantsFor, vaultsOf, vaultCipher, vaultMeta, retireVault,
+  accessesOf, refusalsOf, revokeGrant, settleAnswered, settleRefused,
+  openRequest, pendingFor, requestById, accessById,
+  requestsOfGrant, accessesOfGrant, refusalsOfGrant, openCount,
 } from "../src/arkiv/ledger.mjs";
+import { MAX_STR } from "../src/arkiv/schema.mjs";
 import { watchExtensions } from "../src/arkiv/watch.mjs";
 import {
-  GrantTypes, RequestTypes, AnswerTypes, DelegationTypes,
-  grantMessage, requestMessage, answerMessage, delegationMessage,
-  requireSignature, SignatureError, clientSpec,
+  GrantTypes, RequestTypes, AnswerTypes, DelegationTypes, ForgetTypes, RevokeTypes, PresenceTypes, AskKeyTypes,
+  grantMessage, requestMessage, answerMessage, delegationMessage, forgetMessage, revokeMessage, presenceMessage,
+  askKeyMessage,
+  requireSignature, SignatureError, clientSpec, recordId,
 } from "../src/auth/typed.mjs";
 import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
-import { TOPICS } from "../src/ask/questions.mjs";
+import { TOPICS, sha256hex, cleanBand } from "../src/ask/questions.mjs";
 import { ask as askEnclave, assertTeeML, providers, DEFAULT_MODEL, PINNED_PROVIDER, MIN_MAX_TOKENS, baseUrl } from "../src/ask/enclave.mjs";
 
 const require = createRequire(import.meta.url);
@@ -190,6 +193,60 @@ const hexToBytes = (hex) => {
 
 /* ------------------------------------------------------------------ routes */
 
+/* Bumped whenever the browser depends on a new route. The page compares this and
+ * says so when the API is older than it, because a stale server looks exactly
+ * like a bug in whatever you happen to be looking at. */
+const API_BUILD = 6;
+
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+/** A question or scope that does not fit is refused, not cut off. Arkiv `str` is
+ *  128 bytes, and fitStr() would quietly store half a sentence while the hash and
+ *  the signature cover all of it. */
+const tooLong = (text) => Buffer.byteLength(String(text ?? "")) > MAX_STR;
+
+/** Can this permission still be used, right now? */
+const usable = (g) => Boolean(g) && g.state === "live" && g.diesAt > Date.now();
+
+/* Who is answering at the moment. In memory on purpose: it is a hint for the person
+ * asking ("should be quick" or "they are away"), it costs no gas, and only the owner's
+ * side can claim it: the key a live permission names, or a live delegation. */
+const presence = new Map(); // `${vaultId}|${key}` -> { at, diesAt }. The key "*" is a delegation.
+const vaultOwners = new Map(); // vaultId -> owner, so a ping costs no extra read
+const PRESENCE_MS = 30_000;
+const seen = (k) => {
+  const p = presence.get(k);
+  return Boolean(p) && Date.now() - p.at < PRESENCE_MS && p.diesAt * 1000 > Date.now();
+};
+/* Can anything answer this permission right now? The key it names, or a browser the
+ * owner delegated the whole document to. Per document was not enough: one open device
+ * told every reviewer "answering", whichever device held their key. */
+const isAnswering = (g) =>
+  Boolean(g) && (seen(`${g.vaultId}|${String(g.sessionKey ?? "").toLowerCase()}`) || seen(`${g.vaultId}|*`));
+const forgetPresence = (vaultId) => {
+  for (const k of [...presence.keys()]) if (k.startsWith(`${vaultId}|`)) presence.delete(k);
+};
+
+/* Limits that belong to the protocol, not to any one screen. */
+const MIN_GRANT_MS = 30_000; // shorter than this is over before the write lands
+const MAX_GRANT_MS = 31 * 86_400_000; // the app offers a week at most
+const ASKED_WITHIN_MS = 10 * 60_000; // a signed question older than this is stale
+const ANSWERS = ["yes", "no", "unknown"];
+const RECEIPT_KINDS = ["provider-address", "no-lines-matched"];
+const HEX_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const CONTROL = /[\u0000-\u001f\u007f\u2028\u2029]/;
+const hasControl = (s) => CONTROL.test(String(s ?? ""));
+const oneLine = (s) => String(s ?? "").replace(new RegExp(CONTROL.source, "g"), " ").trim();
+
+/* What this process has already done. Arkiv's indexes catch up a moment after a write,
+ * so a second copy arriving in that moment is refused here rather than written twice. */
+const issuing = new Set(); // grantIds written, or being written
+const asking = new Set(); // requestIds written, or being written
+const settling = new Set(); // requestIds answered, or being answered
+const opening = new Map(); // grantId -> questions being written right now
+const ended = new Set(); // grantIds revoked, or deleted along with their document
+const spentHere = new Map(); // grantId -> uses spent, as this process last wrote them
+
 const routes = {
   /** Everything a browser needs to produce a signature the server will accept. */
   "GET /api/spec": async (req, res) => {
@@ -237,6 +294,7 @@ const routes = {
     }
     json(res, 200, {
       ok: chain.connected && arkiv.connected,
+      build: API_BUILD,
       mode: isLocalHost(req) ? "local" : "hosted",
       chain,
       arkiv,
@@ -331,11 +389,65 @@ const routes = {
     }
   },
 
+  /* ----------------------------------------------------------- delete ---
+     The owner signs the vaultId, and the signature is checked against the OWNER
+     RECORDED ON THE VAULT, not against whatever address the body claims, before
+     any gas is spent. The server can pay for a deletion. It can neither author
+     nor target one. */
+  "POST /api/vault/forget": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+      if (!b.vaultId) return json(res, 400, { error: "which document?" });
+
+      const signer = await requireSignature({
+        address: b.owner,
+        types: ForgetTypes,
+        primaryType: "Forget",
+        message: forgetMessage({ vaultId: b.vaultId }),
+        signature: b.ownerSig,
+      });
+
+      const meta = await vaultMeta(ctx.reader, b.vaultId);
+      if (!meta) return json(res, 404, { error: "no such document" });
+      if (String(meta.owner).toLowerCase() !== String(signer).toLowerCase()) {
+        return json(res, 403, { error: "that document belongs to someone else" });
+      }
+      if (meta.state !== "live") return json(res, 409, { error: "it is already gone" });
+
+      // A permission to ask about a document that no longer exists would leave
+      // someone waiting forever, so the permissions end with it, atomically.
+      const pointing = (await grantsOf(ctx.reader, signer, 100)).filter(
+        (g) => g.vaultId === meta.vaultId && g.state === "live",
+      );
+      // Over from this moment: an answer still waiting its turn to be written is refused.
+      for (const g of pointing) ended.add(g.grantId);
+      let out;
+      try {
+        out = await retireVault(ctx, meta.entityKey, pointing.map((g) => g.entityKey));
+      } catch (e) {
+        for (const g of pointing) ended.delete(g.grantId);
+        throw e;
+      }
+      forgetPresence(meta.vaultId);
+
+      json(res, 200, { ...out, vaultId: meta.vaultId, label: meta.label, endedPermissions: pointing.length });
+    } catch (e) {
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
   "GET /api/grants": async (req, res, url) => {
     if (!ctx) return json(res, 503, { error: bootError });
+    const verifier = url.searchParams.get("verifier");
     const owner = url.searchParams.get("owner") ?? acct.address;
     try {
-      json(res, 200, { owner, grants: await grantsOf(ctx.reader, owner) });
+      if (verifier) {
+        json(res, 200, { verifier, grants: await grantsFor(ctx.reader, verifier) });
+      } else {
+        json(res, 200, { owner, grants: await grantsOf(ctx.reader, owner) });
+      }
     } catch (e) {
       json(res, 502, { error: scrub(e) });
     }
@@ -356,7 +468,7 @@ const routes = {
             "This is not a missing record. Past its death block Arkiv stops returning the entity and every operation on it fails.",
         });
       }
-      json(res, 200, g);
+      json(res, 200, { ...g, answering: isAnswering(g) });
     } catch (e) {
       json(res, 502, { error: scrub(e) });
     }
@@ -364,6 +476,7 @@ const routes = {
 
   "POST /api/grant": async (req, res) => {
     if (!ctx) return json(res, 503, { error: bootError });
+    let claimed = null;
     try {
       const b = await readBody(req);
       // questionSet is a coarse tag derived from the owner's own words, not a
@@ -372,40 +485,90 @@ const routes = {
       if (!b.question?.trim()) {
         return json(res, 400, { error: "say what they may ask about" });
       }
+      if (tooLong(b.question) || tooLong(b.questionSet)) {
+        return json(res, 400, { error: "that is too long to store, keep it under about 120 characters" });
+      }
+      if (hasControl(b.question)) {
+        return json(res, 400, { error: "keep what they may ask about to one line" });
+      }
+      if (!HEX_ADDRESS.test(String(b.verifier ?? "")) || (b.sessionKey && !HEX_ADDRESS.test(String(b.sessionKey)))) {
+        return json(res, 400, { error: "that is not a wallet address" });
+      }
+
+      /* It lasts exactly as long as the owner signed for. This used to come from
+       * `minutes` and `days`, which nobody signs, so the signed time was checked and
+       * then ignored, and a two-minute signature could be posted again for six months. */
+      const diesAt = Number(b.diesAt);
+      const life = diesAt - Date.now();
+      if (!Number.isSafeInteger(diesAt) || life < MIN_GRANT_MS) {
+        return json(res, 400, { error: "that permission would be over before it starts" });
+      }
+      if (life > MAX_GRANT_MS) {
+        return json(res, 400, { error: "a permission can last a month at most" });
+      }
+      const usesAllowed = Number(b.usesAllowed ?? 3);
+      if (!Number.isSafeInteger(usesAllowed) || usesAllowed < 1) {
+        return json(res, 400, { error: "say how many questions they may ask" });
+      }
 
       // The owner signed these exact terms. Verify before spending our gas on
       // them - this is what makes the paymaster arrangement honest.
+      const message = grantMessage({
+        vaultId: b.vaultId,
+        verifier: b.verifier,
+        questionSet: b.questionSet,
+        question: b.question,
+        usesAllowed,
+        diesAt,
+        sessionKey: b.sessionKey,
+      });
       const owner = await requireSignature({
         address: b.owner,
         types: GrantTypes,
         primaryType: "Grant",
-        message: grantMessage({
-          vaultId: b.vaultId,
-          verifier: b.verifier,
-          questionSet: b.questionSet,
-          question: b.question,
-          usesAllowed: b.usesAllowed ?? 3,
-          diesAt: b.diesAt,
-        }),
+        message,
         signature: b.ownerSig,
       });
 
+      // Only over a document of their own that still exists. Anyone could sign a
+      // permission over somebody else's document, and use it to claim to be answering.
+      const meta = await vaultMeta(ctx.reader, message.vaultId);
+      if (!meta || meta.state !== "live") {
+        return json(res, 404, { error: "that document does not exist, or it was deleted" });
+      }
+      if (String(meta.owner).toLowerCase() !== owner.toLowerCase()) {
+        return json(res, 403, { error: "that document belongs to someone else" });
+      }
+
+      // One signature makes one permission, however many times it is posted.
+      const grantId = recordId("g", GrantTypes, "Grant", message);
+      if (issuing.has(grantId)) return json(res, 409, { error: "this permission was already issued" });
+      issuing.add(grantId);
+      claimed = grantId;
+      if (await liveGrant(ctx.reader, grantId)) {
+        claimed = null; // it exists, so it stays refused
+        return json(res, 409, { error: "this permission was already issued" });
+      }
+
       const out = await issueGrant(ctx, {
-        vaultId: b.vaultId,
+        grantId,
+        diesAt,
+        vaultId: message.vaultId,
         owner,
-        verifier: b.verifier,
-        verifierName: b.verifierName ?? "",
-        questionSet: b.questionSet,
-        usesAllowed: Number(b.usesAllowed ?? 3),
-        minutes: b.minutes ? Number(b.minutes) : null,
-        days: b.days ? Number(b.days) : 7,
+        verifier: message.verifier,
+        verifierName: oneLine(b.verifierName),
+        questionSet: message.questionSet,
+        usesAllowed,
         threshold: String(b.threshold ?? ""),
-        note: b.question ?? "",
+        note: message.question,
         labelId: 0n,
         ownerSig: hexToBytes(b.ownerSig),
+        sessionKey: b.sessionKey ? message.sessionKey : "",
       });
-      json(res, 200, out);
+      claimed = null; // written, and it stays in `issuing` so a copy is refused here too
+      json(res, 200, { ...out, diesAt });
     } catch (e) {
+      if (claimed) issuing.delete(claimed); // never written, so it may be tried again
       if (e instanceof SignatureError) return json(res, 401, { error: e.message });
       json(res, 502, { error: scrub(e) });
     }
@@ -416,9 +579,10 @@ const routes = {
      the owner's inbox, signed by the asker before they are told anything. */
   "POST /api/request": async (req, res) => {
     if (!ctx) return json(res, 503, { error: bootError });
+    let claimed = null;
     try {
       const b = await readBody(req);
-      const grant = await liveGrant(ctx.reader, b.grantId);
+      const grant = await liveGrant(ctx.reader, String(b.grantId ?? ""));
       if (!grant) {
         return json(res, 404, {
           error: "that permission no longer exists",
@@ -427,17 +591,45 @@ const routes = {
         });
       }
 
-      const asker = await requireSignature({
-        address: b.asker,
-        types: RequestTypes,
-        primaryType: "Request",
-        message: requestMessage({
-          grantId: b.grantId,
-          questionHash: b.questionHash,
-          askedAt: b.askedAt,
-        }),
-        signature: b.askerSig,
-      });
+      /* The time is part of what the asker signed, and a signature only counts while
+       * it is fresh. Every signed question is public, and each one was good for posting
+       * again until the limit ran out. */
+      const askedAt = Number(b.askedAt);
+      if (!Number.isSafeInteger(askedAt) || Math.abs(Date.now() - askedAt) > ASKED_WITHIN_MS) {
+        return json(res, 400, { error: "that question was signed too long ago, so ask it again" });
+      }
+      const message = requestMessage({ grantId: grant.grantId, questionHash: b.questionHash, askedAt });
+
+      /* Signed by the reviewer's wallet, or by a key their wallet let sign questions
+       * under exactly this permission until it ends. Either way the question is theirs,
+       * and asking is no longer a wallet popup every time. */
+      let asker;
+      let askerKey = "";
+      if (b.askerKey) {
+        if (!HEX_ADDRESS.test(String(b.askerKey))) return json(res, 400, { error: "that is not a key" });
+        askerKey = await requireSignature({
+          address: b.askerKey,
+          types: RequestTypes,
+          primaryType: "Request",
+          message,
+          signature: b.askerSig,
+        });
+        asker = await requireSignature({
+          address: grant.verifier,
+          types: AskKeyTypes,
+          primaryType: "AskKey",
+          message: askKeyMessage({ grantId: grant.grantId, sessionKey: askerKey, diesAt: grant.diesAt }),
+          signature: b.askKeySig,
+        });
+      } else {
+        asker = await requireSignature({
+          address: b.asker,
+          types: RequestTypes,
+          primaryType: "Request",
+          message,
+          signature: b.askerSig,
+        });
+      }
 
       // The grant names who may ask. A signature from anyone else is refused.
       if (asker.toLowerCase() !== String(grant.verifier).toLowerCase()) {
@@ -445,44 +637,207 @@ const routes = {
           error: `this permission was issued to ${grant.verifier}, not to ${asker}`,
         });
       }
-      if (grant.usesSpent >= grant.usesAllowed) {
-        return json(res, 403, { error: "this permission has no uses left" });
+      if (grant.state === "revoked" || ended.has(grant.grantId)) {
+        return json(res, 403, { error: "the owner ended this permission" });
+      }
+      if (grant.diesAt <= Date.now()) {
+        return json(res, 404, { error: "that permission no longer exists", expired: true });
       }
 
-      const out = await openRequest(ctx, {
-        grantId: grant.grantId,
-        vaultId: grant.vaultId,
-        owner: grant.owner,
-        asker,
-        askerName: grant.verifierName,
-        questionSet: grant.questionSet,
-        // The verifier's own words, not the grant's suggestion. The grant gives
-        // a coarse right; the exact question is theirs and the owner sees it.
-        question: b.question || grant.note,
-        questionHash: b.questionHash,
-        askerSig: hexToBytes(b.askerSig),
-        days: 7,
-      });
+      const asked = String(b.question ?? "").trim();
+      if (!asked) return json(res, 400, { error: "write the question first" });
+      if (tooLong(asked)) {
+        return json(res, 400, { error: "that question is too long, keep it under about 120 characters" });
+      }
+      // A line break would let a question write its own "ALLOWED TOPIC:" into the prompt.
+      if (hasControl(asked)) return json(res, 400, { error: "keep the question to one line" });
+      // What gets answered has to be what got signed.
+      if ((await sha256hex(asked)) !== b.questionHash) {
+        return json(res, 400, { error: "that question does not match the one you signed" });
+      }
+
+      // One signed question makes one question.
+      const requestId = recordId("q", RequestTypes, "Request", message);
+      if (asking.has(requestId)) return json(res, 409, { error: "that question was already asked" });
+      asking.add(requestId);
+      claimed = requestId;
+      if (await requestById(ctx.reader, requestId)) {
+        claimed = null;
+        return json(res, 409, { error: "that question was already asked" });
+      }
+
+      // Several can be open at once, so questions still waiting count against the
+      // limit. Counted rather than listed, because a list stopped at 50.
+      const waiting = (await openCount(ctx.reader, grant.grantId)) + (opening.get(grant.grantId) ?? 0);
+      const spent = Math.max(grant.usesSpent, spentHere.get(grant.grantId) ?? 0);
+      if (grant.state !== "live" || spent + waiting >= grant.usesAllowed) {
+        asking.delete(requestId);
+        claimed = null;
+        return json(res, 403, { error: `you have used all ${grant.usesAllowed} of your questions` });
+      }
+
+      opening.set(grant.grantId, (opening.get(grant.grantId) ?? 0) + 1);
+      let out;
+      try {
+        out = await openRequest(ctx, {
+          requestId,
+          askedAt,
+          grantId: grant.grantId,
+          vaultId: grant.vaultId,
+          owner: grant.owner,
+          asker,
+          askerName: grant.verifierName,
+          questionSet: grant.questionSet,
+          // The asker's own words. The grant gives a coarse right; the exact
+          // question is theirs.
+          question: asked,
+          questionHash: b.questionHash,
+          askerSig: hexToBytes(b.askerSig),
+          askerKey,
+          askKeySig: askerKey ? hexToBytes(b.askKeySig) : undefined,
+          days: 7,
+        });
+      } finally {
+        opening.set(grant.grantId, opening.get(grant.grantId) - 1);
+      }
+      claimed = null;
       json(res, 200, { ...out, state: "pending", owner: grant.owner });
+    } catch (e) {
+      if (claimed) asking.delete(claimed);
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /**
+   * What is waiting on the owner, right now.
+   *
+   * A question outlives its permission (it stays readable for the asker for a
+   * week), so without this filter a ten-minute permission left a question sitting
+   * here for seven days that nobody was entitled to have answered. Only questions
+   * whose permission can still be used come back, each with the owner's own words
+   * for what was allowed, because that is what the answer is checked against.
+   */
+  "GET /api/inbox": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const owner = url.searchParams.get("owner");
+    if (!owner) return json(res, 400, { error: "owner is required" });
+    try {
+      const [pending, grants] = await Promise.all([
+        pendingFor(ctx.reader, owner, 100),
+        grantsOf(ctx.reader, owner, 100),
+      ]);
+      const byId = new Map(grants.map((g) => [g.grantId, g]));
+      json(res, 200, {
+        owner,
+        // Each carries the asker's signature and the time they signed, so the owner's
+        // browser can check that someone it permitted really asked, without trusting us.
+        pending: pending
+          .filter((r) => usable(byId.get(r.grantId)) && !ended.has(r.grantId))
+          .map((r) => ({ ...r, scope: byId.get(r.grantId).note ?? "" })),
+      });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /**
+   * Every question under one permission, with what came back. This is the asker's
+   * page: several can be open at once and a reload loses nothing.
+   */
+  "GET /api/requests": async (req, res, url) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    const grantId = url.searchParams.get("grant");
+    if (!grantId) return json(res, 400, { error: "grant is required" });
+    try {
+      const [requests, accesses, refusals] = await Promise.all([
+        requestsOfGrant(ctx.reader, grantId),
+        accessesOfGrant(ctx.reader, grantId),
+        refusalsOfGrant(ctx.reader, grantId),
+      ]);
+      const receipts = new Map(accesses.map((a) => [a.accessId, a]));
+      const reasons = new Map(refusals.map((r) => [r.questionHash, r]));
+      json(res, 200, {
+        grantId,
+        requests: requests.map(({ entityKey, ...r }) => ({
+          ...r,
+          receipt: r.state === "answered" ? (receipts.get(r.accessId) ?? null) : null,
+          refusal: r.state === "refused" ? (reasons.get(r.questionHash) ?? null) : null,
+        })),
+      });
+    } catch (e) {
+      json(res, 502, { error: scrub(e) });
+    }
+  },
+
+  /**
+   * "I am answering right now." Sent by the owner's tab while it answers by itself,
+   * so the asker can be told whether to expect a quick reply. Either the key a live
+   * permission names, proving it holds that key, or a live delegation signed by the
+   * document's owner. Nothing is written anywhere.
+   */
+  "POST /api/presence": async (req, res) => {
+    if (!ctx) return json(res, 503, { error: bootError });
+    try {
+      const b = await readBody(req);
+
+      // A key named by a live permission. The tab proves it holds that key.
+      if (b.grantId) {
+        const at = Number(b.at);
+        if (!(Math.abs(Date.now() - at) < 120_000)) return json(res, 401, { error: "that is too old to count" });
+        const signer = await requireSignature({
+          address: b.sessionKey,
+          types: PresenceTypes,
+          primaryType: "Presence",
+          message: presenceMessage({ grantId: b.grantId, at }),
+          signature: b.sig,
+        });
+        const grant = await liveGrant(ctx.reader, b.grantId);
+        if (
+          !usable(grant) ||
+          ended.has(grant.grantId) ||
+          String(grant.sessionKey).toLowerCase() !== String(signer).toLowerCase()
+        ) {
+          return json(res, 403, { error: "that key is not named by a live permission" });
+        }
+        const k = `${grant.vaultId}|${signer.toLowerCase()}`;
+        if (b.stop) presence.delete(k);
+        else presence.set(k, { at: Date.now(), diesAt: Math.floor(grant.diesAt / 1000) });
+        return json(res, 200, { answering: isAnswering(grant) });
+      }
+
+      // A delegation, from a browser that unlocked the document after the fact. It
+      // answers for every permission on that document.
+      const { delegation: d, stop } = b;
+      if (!d?.vaultId) return json(res, 400, { error: "delegation is required" });
+      const signer = await requireSignature({
+        address: d.owner,
+        types: DelegationTypes,
+        primaryType: "Delegation",
+        message: delegationMessage({ vaultId: d.vaultId, sessionKey: d.sessionKey, diesAt: d.diesAt }),
+        signature: d.sig,
+      });
+      let owner = vaultOwners.get(d.vaultId);
+      if (!owner) {
+        const meta = await vaultMeta(ctx.reader, d.vaultId);
+        if (!meta) return json(res, 404, { error: "no such document" });
+        owner = meta.owner;
+        vaultOwners.set(d.vaultId, owner);
+      }
+      if (String(owner).toLowerCase() !== String(signer).toLowerCase()) {
+        return json(res, 403, { error: "that document belongs to someone else" });
+      }
+      const k = `${d.vaultId}|*`;
+      if (stop || Number(d.diesAt) * 1000 <= Date.now()) presence.delete(k);
+      else presence.set(k, { at: Date.now(), diesAt: Number(d.diesAt) });
+      json(res, 200, { answering: seen(k) });
     } catch (e) {
       if (e instanceof SignatureError) return json(res, 401, { error: e.message });
       json(res, 502, { error: scrub(e) });
     }
   },
 
-  /** The owner's inbox. What is waiting on them, right now. */
-  "GET /api/inbox": async (req, res, url) => {
-    if (!ctx) return json(res, 503, { error: bootError });
-    const owner = url.searchParams.get("owner");
-    if (!owner) return json(res, 400, { error: "owner is required" });
-    try {
-      json(res, 200, { owner, pending: await pendingFor(ctx.reader, owner) });
-    } catch (e) {
-      json(res, 502, { error: scrub(e) });
-    }
-  },
-
-  /** What the verifier polls while they wait. */
+  /** One question, by id. */
   "GET /api/request": async (req, res, url) => {
     if (!ctx) return json(res, 503, { error: bootError });
     const id = url.searchParams.get("id");
@@ -511,32 +866,26 @@ const routes = {
    */
   "POST /api/answer": async (req, res) => {
     if (!ctx) return json(res, 503, { error: bootError });
+    let claimed = null;
     try {
       const b = await readBody(req);
-      const request = await requestById(ctx.reader, b.requestId);
+      const request = await requestById(ctx.reader, String(b.requestId ?? ""));
       if (!request) return json(res, 404, { error: "that request is gone", expired: true });
       if (request.state !== "pending") {
         return json(res, 409, { error: `that request is already ${request.state}` });
       }
 
-      /* Who signed this answer?
-       *
-       * Normally the owner's wallet. But an owner who is "on call" delegates
-       * to an ephemeral key living in their own tab, so answers come back in
-       * seconds instead of whenever they next look at their phone. Both paths
-       * end at the same question: does this signature trace back to the owner
-       * of THIS document?
-       *
-       * The delegation is checked here, not trusted: the owner's signature
-       * over it is verified, it must name the vault this request is about,
-       * it must name the key that actually signed the answer, and it must not
-       * have expired. Any of those failing is a 403. */
+      /* Who signed this answer? Usually the key the owner named in the permission, held
+       * in their browser, so one signature when the reviewer was added covers every
+       * answer. Otherwise the owner's wallet, or a key the owner delegated this document
+       * to. Each path ends at the same question: does this trace back to the owner of
+       * THIS document? */
       const signer = await requireSignature({
         address: b.signer ?? b.owner,
         types: AnswerTypes,
         primaryType: "Answer",
         message: answerMessage({
-          requestId: b.requestId,
+          requestId: request.requestId,
           grantId: request.grantId,
           questionHash: request.questionHash,
           answerHash: b.answerHash,
@@ -545,8 +894,19 @@ const routes = {
         signature: b.ownerSig,
       });
 
-      let owner = signer;
-      if (b.delegation) {
+      // Ended means ended, whatever the verdict. A refusal spends a use too, and was
+      // still being written against permissions the owner had already ended.
+      const grant = await liveGrant(ctx.reader, request.grantId);
+      if (!usable(grant) || ended.has(request.grantId)) {
+        return json(res, 410, { error: "that permission has ended, so this can no longer be answered" });
+      }
+
+      const namedKey =
+        Boolean(grant.sessionKey) && String(grant.sessionKey).toLowerCase() === signer.toLowerCase();
+      let owner = namedKey ? grant.owner : signer;
+      // A delegation only matters for a key the permission does not name. An expired
+      // one sent along with a named key used to block it.
+      if (!namedKey && b.delegation) {
         const d = b.delegation;
         const delegator = await requireSignature({
           address: d.owner,
@@ -570,76 +930,142 @@ const routes = {
         }
         owner = delegator;
       }
-
       if (owner.toLowerCase() !== String(request.owner).toLowerCase()) {
         return json(res, 403, { error: "only the owner of the document may answer" });
       }
 
+      /* The verdict has to be the one that was signed. The signature covers answerHash,
+       * and nothing compared it with the answer it arrived with, so "no" could be signed
+       * and "yes" recorded, or a signed refusal recorded as an answer. */
+      let verdict = null;
       if (b.decision === "refused") {
-        await decideRequest(ctx, request.entityKey, { state: "refused" });
-        await recordRefusal(ctx, {
-          grantId: request.grantId,
-          owner,
-          asker: request.asker,
-          question: request.question,
-          questionHash: request.questionHash,
-          reason: "owner-declined",
-          detail: "The owner saw the request and declined it.",
-        }).catch(() => {});
+        if (b.answerHash || b.enclaveRequestId) {
+          return json(res, 400, { error: "a question that was turned down carries no answer" });
+        }
+      } else if (b.decision === "answered") {
+        const answer = String(b.answer ?? "");
+        const band = String(b.band ?? "");
+        if (!ANSWERS.includes(answer)) return json(res, 400, { error: "an answer is yes, no or unknown" });
+        if (band !== cleanBand(band)) return json(res, 400, { error: "that band is not one AskOnly sends" });
+        if (!b.answerHash || (await sha256hex(JSON.stringify({ answer, band }))) !== b.answerHash) {
+          return json(res, 400, { error: "that answer is not the one that was signed" });
+        }
+        verdict = { answer, band };
+      } else {
+        return json(res, 400, { error: "decision is answered or refused" });
+      }
+
+      // A second copy of this answer, from another tab or another device, stops here.
+      if (settling.has(request.requestId)) {
+        return json(res, 409, { error: "that request is already being answered" });
+      }
+      settling.add(request.requestId);
+      claimed = request.requestId;
+
+      /* Checked again inside the write's own turn. Writes queue behind each other, and a
+       * revoke, or another answer to the same question, could land while this waited.
+       * The grant is read fresh for the same reason: two answers under one permission
+       * both wrote "one use spent". */
+      const prepare = async () => {
+        const r = await requestById(ctx.reader, request.requestId);
+        if (!r) throw new StateError("that request is gone", 404);
+        if (r.state !== "pending") throw new StateError(`that request is already ${r.state}`, 409);
+        const g = await liveGrant(ctx.reader, r.grantId);
+        if (!usable(g) || ended.has(r.grantId)) {
+          throw new StateError("that permission has ended, so this can no longer be answered", 410);
+        }
+        return { request: r, grant: { ...g, usesSpent: Math.max(g.usesSpent, spentHere.get(g.grantId) ?? 0) } };
+      };
+
+      if (!verdict) {
+        const outOfScope = b.reason === "out-of-scope";
+        const out = await settleRefused(ctx, {
+          prepare,
+          refusal: {
+            grantId: request.grantId,
+            owner,
+            asker: request.asker,
+            question: request.question,
+            questionHash: request.questionHash,
+            reason: outOfScope ? "out-of-scope" : "owner-declined",
+            detail: outOfScope
+              ? "Outside what the owner agreed to be asked about."
+              : "The owner saw the question and turned it down.",
+          },
+        });
+        spentHere.set(request.grantId, out.grant.usesSpent + 1);
+        claimed = null;
         return json(res, 200, { state: "refused" });
       }
 
-      const grant = await liveGrant(ctx.reader, request.grantId);
-      const access = await recordAccess(ctx, {
-        grantId: request.grantId,
-        vaultId: request.vaultId,
-        owner,
-        asker: request.asker,
-        askerName: request.askerName ?? "",
-        question: request.question,
-        questionHash: request.questionHash,
-        answer: b.answer,
-        answerHash: b.answerHash,
-        band: b.band ?? "",
-        requestId: b.enclaveRequestId ?? "",
-        provider: b.provider ?? "0x0000000000000000000000000000000000000000",
-        model: b.model ?? "glm-5.3",
-        trustMode: "private",
-        verification: b.verification ?? "provider-address",
-        teeType: b.teeType ?? "",
-        latencyMs: b.latencyMs ?? 0,
-        askerSig: hexToBytes(b.ownerSig),
+      const { grant: settled, ...receipt } = await settleAnswered(ctx, {
+        prepare,
+        access: {
+          grantId: request.grantId,
+          vaultId: request.vaultId,
+          owner,
+          asker: request.asker,
+          askerName: request.askerName ?? "",
+          question: request.question,
+          questionHash: request.questionHash,
+          answer: verdict.answer,
+          answerHash: b.answerHash,
+          band: verdict.band,
+          requestId: String(b.enclaveRequestId ?? ""),
+          // "" when the browser had no provider to name, and addr("") throws, which left
+          // the question stuck after the enclave had already been asked.
+          provider: HEX_ADDRESS.test(String(b.provider ?? "")) ? b.provider : ZERO_ADDRESS,
+          model: String(b.model || "glm-5.3"),
+          trustMode: "private",
+          verification: RECEIPT_KINDS.includes(b.verification) ? b.verification : "provider-address",
+          teeType: String(b.teeType ?? ""),
+          linesSeen: /^\d+\/\d+$/.test(String(b.linesSeen ?? "")) ? String(b.linesSeen) : "",
+          latencyMs: Math.max(0, Math.min(3_600_000, Math.round(Number(b.latencyMs) || 0))),
+          askerSig: hexToBytes(b.ownerSig),
+        },
       });
-      await decideRequest(ctx, request.entityKey, { state: "answered", accessId: access.accessId });
-      if (grant) {
-        await spendGrant(ctx, grant.entityKey, {
-          usesSpent: grant.usesSpent,
-          usesAllowed: grant.usesAllowed,
-        }).catch(() => {});
-      }
-      json(res, 200, { state: "answered", ...access });
+      spentHere.set(request.grantId, settled.usesSpent + 1);
+      claimed = null;
+      json(res, 200, { state: "answered", ...receipt });
     } catch (e) {
+      if (claimed) settling.delete(claimed);
       if (e instanceof SignatureError) return json(res, 401, { error: e.message });
+      if (e instanceof StateError) return json(res, e.status, { error: e.message });
       json(res, 502, { error: scrub(e) });
     }
   },
 
-  "POST /api/grant/extend": async (req, res) => {
-    if (!ctx) return json(res, 503, { error: bootError });
-    try {
-      const b = await readBody(req);
-      json(res, 200, await extendGrant(ctx, b.entityKey, { days: Number(b.days ?? 7) }));
-    } catch (e) {
-      json(res, 502, { error: scrub(e) });
-    }
-  },
-
+  /**
+   * End a permission. Signed: this took an entityKey from whoever POSTed it, so
+   * anybody could end anybody's permission.
+   */
   "POST /api/grant/revoke": async (req, res) => {
     if (!ctx) return json(res, 503, { error: bootError });
     try {
       const b = await readBody(req);
-      json(res, 200, await revokeGrant(ctx, b.entityKey));
+      if (!b.grantId) return json(res, 400, { error: "which permission?" });
+      const signer = await requireSignature({
+        address: b.owner,
+        types: RevokeTypes,
+        primaryType: "Revoke",
+        message: revokeMessage({ grantId: b.grantId }),
+        signature: b.ownerSig,
+      });
+      const grant = await liveGrant(ctx.reader, b.grantId);
+      if (!grant) return json(res, 404, { error: "that permission has already ended", expired: true });
+      if (String(grant.owner).toLowerCase() !== String(signer).toLowerCase()) {
+        return json(res, 403, { error: "that permission belongs to someone else" });
+      }
+      // Over from this moment: an answer still waiting its turn to be written is refused.
+      ended.add(grant.grantId);
+      try {
+        json(res, 200, await revokeGrant(ctx, grant.entityKey));
+      } catch (e) {
+        ended.delete(grant.grantId);
+        throw e;
+      }
     } catch (e) {
+      if (e instanceof SignatureError) return json(res, 401, { error: e.message });
       json(res, 502, { error: scrub(e) });
     }
   },
@@ -686,44 +1112,6 @@ const routes = {
       json(res, 200, { ...r, relayed: true, operatorSawExtract: true });
     } catch (e) {
       json(res, 502, { error: String(e.message).slice(0, 300), kind: e.kind ?? "relay" });
-    }
-  },
-
-  "POST /api/access": async (req, res) => {
-    if (!ctx) return json(res, 503, { error: bootError });
-    try {
-      const b = await readBody(req);
-      if (!b.askerSig) {
-        return json(res, 400, {
-          error: "askerSig is required - the answer is released against the asker's signature",
-        });
-      }
-      const out = await recordAccess(ctx, {
-        ...b,
-        askerSig: hexToBytes(b.askerSig),
-      });
-      if (b.grantEntityKey) {
-        try {
-          await spendGrant(ctx, b.grantEntityKey, {
-            usesSpent: b.usesSpent ?? 0,
-            usesAllowed: b.usesAllowed ?? 1,
-          });
-        } catch (e) {
-          out.spendWarning = scrub(e);
-        }
-      }
-      json(res, 200, out);
-    } catch (e) {
-      json(res, 502, { error: scrub(e) });
-    }
-  },
-
-  "POST /api/refusal": async (req, res) => {
-    if (!ctx) return json(res, 503, { error: bootError });
-    try {
-      json(res, 200, await recordRefusal(ctx, await readBody(req)));
-    } catch (e) {
-      json(res, 502, { error: scrub(e) });
     }
   },
 
