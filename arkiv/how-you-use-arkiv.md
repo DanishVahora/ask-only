@@ -1,6 +1,6 @@
 # How AskOnly uses Arkiv
 
-Four entities, one of which is the product. Everything in this file is live on Rabdi
+Five entities, one of which is the product. Everything in this file is live on Rabdi
 (chain `7794095`) and reproducible with the commands at the bottom.
 
 **Writing wallet:** `0x4CA8176777D44B76235684b63334088C618994e4`
@@ -13,10 +13,11 @@ Four entities, one of which is the product. Everything in this file is live on R
 
 ## The shape, in one paragraph
 
-A **vault** is an encrypted document. A **grant** is a capability to ask one question about one
-vault — and *its expiry is the permission itself*, not a field describing one. An **access** is
-the receipt written when a question is answered, bound to the asker's own signature. A
-**refusal** is the receipt written when someone asks something they were not permitted to.
+A **vault** is an encrypted document. A **grant** lets one address ask about one vault for a set
+time — and *its expiry is the permission itself*, not a field describing one. A **request** is a
+question the asker signed, waiting for the owner's browser to answer it. An **access** is the
+receipt written when it is answered, signed by the owner's browser. A **refusal** is the receipt
+written when a question is turned down.
 
 The grant is the interesting one, so take it first.
 
@@ -30,30 +31,34 @@ export const Grant = defineSchema("askonly.grant", {
   vaultId: str().indexed(),
   owner: addr().indexed(),
   verifier: addr().indexed(),
-  verifierName: str().indexed(),   // "landlord.eth"
-  questionSet: str().indexed(),    // income | identity | tenancy | employment
-  state: str().indexed(),          // live | spent | revoked
-  usesAllowed: u64().indexed(),
+  verifierName: str().indexed(),   // a name the owner types, or a short address if blank. Never resolved
+  questionSet: str().indexed(),    // income | identity | tenancy | employment | general
+  state: str().indexed(),          // live | revoked, and spent on an old counted grant
+  usesAllowed: u64().indexed(),    // 0: no count. Grants before 7 Nov carried one
   usesSpent: u64().indexed(),
   issuedAt: u64().indexed(),
-  diesAt: u64().indexed(),         // ms, mirrors $expiresAt for display and sorting
-  roleBit: u256(),                 // the ENSv2 EAC role the verifier must hold
-  labelId: u256(),
+  diesAt: u64().indexed(),         // ms, exactly as the owner signed it. $expiresAt follows it
+  roleBit: u256(),                 // an ENSv2 EAC role bit, from questionSet. The app never checks it
+  labelId: u256(),                 // 0 on every grant the app writes
   threshold: str(),
   note: str(),
-  ownerSig: bytes(),
+  sessionKey: str(),               // the key in the owner's browser that answers under it
+  ownerSig: bytes(),               // EIP-712 Grant, by the owner's wallet or by ownerKey
+  ownerKey: str(), ownerKeyDiesAt: u64(), ownerKeySig: bytes(),   // that key, and its Session
 });
 ```
 
-Created with a required expiration, and **that is the whole revocation mechanism**:
+Created with a required expiration, and **that is how it runs out**:
 
 ```js
 await wallet.createEntity(Grant, values, { expiration: ExpirationTime.fromMinutes(2) }, { gas });
 ```
 
-There is no `isActive` boolean that a buggy code path can forget to check, and no scheduled job
-that can quietly stop running. Past the death block the network stops returning the entity and
-every operation on it fails.
+Running out needs no `isActive` boolean that a buggy code path can forget to check, and no
+scheduled job that can quietly stop running. Past the death block the network stops returning
+the entity and every operation on it fails. Ending a permission early is different: the owner
+signs a `Revoke`, the server sets `state` to `revoked`, and it keeps the id in memory so an
+answer already queued behind the revoke is refused.
 
 The verifier-facing API leans on this directly — `GET /api/grant?id=…` returns **404 when the
 capability has expired**, and the UI renders that 404 as the expiry rather than as an error:
@@ -65,7 +70,9 @@ if (!g) return { expired: true,
 ```
 
 **`state` is an explicit enum because the network has no `NOT` and no `!=`.** "Not yet spent" is
-inexpressible, so `spent` is written at the moment the last use is consumed.
+inexpressible, so on an old counted grant `spent` is written at the moment the last use is
+consumed. Grants now carry no count; the server allows 10 questions waiting on one permission,
+and 30 in 10 minutes.
 
 ---
 
@@ -83,14 +90,16 @@ export const Vault = defineSchema("askonly.vault", {
   label: str(),
   iv: str(),
   cipher: bytes(),              // AES-GCM-256, encrypted in the browser. Never decrypted server-side.
+  ownerSig: bytes(),            // EIP-712 Seal over (sha256, label), by the owner's wallet or by ownerKey
+  ownerKey: str(), ownerKeyDiesAt: u64(), ownerKeySig: bytes(),   // that key, and its Session
 });
 ```
 
 `cipher` is the document. It is encrypted in the owner's browser (AES-GCM-256, key derived by
 PBKDF2 at 210,000 iterations from a passphrase that never leaves the page) and arrives here as
-opaque bytes. A `bytes` column holds **128 KiB per create**, which fits a compressed encrypted
-payslip — so we store the document in Arkiv itself rather than in a second system, and **the
-ciphertext expires along with everything else**.
+opaque bytes. A `bytes` column holds **128 KiB per create**, which fits an encrypted payslip —
+so we store the document in Arkiv itself rather than in a second system, and **the ciphertext
+expires along with everything else**.
 
 `bytes` can never be indexed, filtered or sorted, which is correct and also convenient: there is
 no way to query documents by content even by accident.
@@ -114,17 +123,21 @@ export const Access = defineSchema("askonly.access", {
   provider: addr().indexed(),      // which enclave address answered
   model: str().indexed(),
   trustMode: str().indexed(),
-  verification: str().indexed(),   // provider-address | request-id-only
+  verification: str().indexed(),   // provider-address | no-lines-matched
   at: u64().indexed(),
   question: str(), band: str(), teeType: str(),
+  linesSeen: str(),                // "3/17": how much of the document the enclave was shown
   latencyMs: u64(),
-  askerSig: bytes(),               // EIP-712 signature of the VERIFIER
+  askerSig: bytes(),               // the answering key's EIP-712 signature over the Answer
 });
 ```
 
-`askerSig` is the load-bearing field. The answer is **not shown to the verifier until they sign
-an EIP-712 receipt** over `(grantId, questionHash, answerHash, requestId)`. They cannot be told
-the answer without producing a record that they asked.
+Each receipt rests on two signatures. The asker signs the question first, an EIP-712 `Request` over
+`(grantId, questionHash, askedAt)`, and it is stored on the request **before anything is
+answered**. They cannot be told the answer without leaving a record that they asked. The owner's
+browser then signs the answer with a key it holds, an EIP-712 `Answer` over `(requestId,
+grantId, questionHash, answerHash, enclaveRequestId)`, and that is what `askerSig` holds. The
+name is older than its meaning.
 
 This is where we are deliberately narrower than our original design. We intended to store a TEE
 signature over the response and verify it against the provider's on-chain signer. **0G's router
@@ -142,7 +155,7 @@ export const Refusal = defineSchema("askonly.refusal", {
   refusalId: str().indexed(), grantId: str().indexed(),
   owner: addr().indexed(), asker: addr().indexed(),
   questionHash: str().indexed(),
-  reason: str().indexed(),   // no-ens-role | out-of-set | uses-exhausted | expired | revoked
+  reason: str().indexed(),   // out-of-scope | owner-declined
   at: u64().indexed(),
   question: str(), detail: str(),
 });
@@ -150,35 +163,80 @@ export const Refusal = defineSchema("askonly.refusal", {
 
 "Who tried to ask something they were not allowed to ask" is exactly as interesting to a data
 subject as who asked legitimately, and it is the record a consent manager would be expected to
-keep. It is also the demo's best beat: the refusal is written *before* the document is touched.
+keep. The app writes two reasons. `out-of-scope` is the enclave's verdict that a question is
+outside what the owner allowed, so by then the owner's browser has opened the document and
+asked the enclave. `owner-declined` is any other refusal the owner's side signs.
 
 ---
 
-## The six queries the app runs
-
-All of these were validated against the live network **with a zero-balance wallet**, because
-reads cost no gas.
+## 5. `askonly.request` — the queue the owner's browser answers from
 
 ```js
+export const Request = defineSchema("askonly.request", {
+  requestId: str().indexed(),      // q- + 12 hex of the signed Request's EIP-712 hash
+  grantId: str().indexed(),
+  vaultId: str().indexed(),
+  owner: addr().indexed(),         // whose inbox this lands in
+  asker: addr().indexed(),
+  askerName: str().indexed(),      // the grant's verifierName, copied
+  questionSet: str().indexed(),
+  questionHash: str().indexed(),
+  state: str().indexed(),          // pending, then answered or refused
+  askedAt: u64().indexed(),        // ms, as the asker signed it
+  decidedAt: u64().indexed(),
+  accessId: str().indexed(),       // the receipt, once answered
+  question: str(),
+  askerSig: bytes(),               // EIP-712 Request, signed before anything is answered
+  askerKey: str(), askKeySig: bytes(), askKeyDiesAt: u64(),   // the asker's browser key, if any
+});
+```
+
+Only the owner's browser holds the passphrase, so the asker cannot produce an answer, only ask
+for one. The server checks the asker's signature and writes the question here as `pending`. The
+owner's browser polls its inbox (`owner` + `state`), checks both signatures itself, and answers.
+The server then settles it in one batch: the receipt, this entity's new `state`, and a use
+counted on the grant. A request lives 7 days, so the asker can still read what came back after
+the permission ends.
+
+---
+
+## The queries the app runs
+
+Reads cost no gas, so none of these needs a funded wallet. The first query shapes were validated
+against the live network **with a zero-balance wallet**, before anything was funded.
+
+```js
+// every read is .createdBy(ours()), the writing wallet: a schema is only a name,
+// and any wallet can tag an entity with it
+
 // 1. the capability, by id - returns nothing once it has died
 .select({ $key: true, $expiresAt: true, grantId: true, state: true, /* … */ })
-.from(Grant).where(eq("grantId", str(grantId))).limit(1).fetch()
+.from(Grant).createdBy(ours()).where(eq("grantId", str(grantId))).limit(1).fetch()
 
 // 2. an owner's permissions, newest first
-.from(Grant).where(eq("owner", addr(owner))).orderBy(desc("issuedAt")).limit(50)
+.from(Grant).createdBy(ours()).where(eq("owner", addr(owner))).orderBy(desc("issuedAt")).limit(50)
 
-// 3. still alive AND not used up - two positive predicates, because there is no NOT
-.from(Grant).where(and(eq("owner", addr(owner)), eq("state", str("live")))).orderBy(asc("diesAt"))
+// 3. the owner's inbox: theirs AND still waiting - two positive predicates, because there is no NOT
+.from(Request).createdBy(ours()).where(and(eq("owner", addr(owner)), eq("state", str("pending"))))
+  .orderBy(desc("askedAt")).limit(100)
 
-// 4. "who asked about me"
-.from(Access).where(eq("owner", addr(owner))).orderBy(desc("at")).limit(100)
+// 4. every question under one permission, which the asker's page polls
+.from(Request).createdBy(ours()).where(eq("grantId", str(grantId))).orderBy(desc("askedAt")).limit(50)
 
-// 5. what was refused on my behalf
-.from(Refusal).where(eq("owner", addr(owner))).orderBy(desc("at"))
+// 5. a count without fetching rows: how many are still waiting, for the limit of 10
+reader.count().from(Request).createdBy(ours())
+  .where(and(eq("grantId", str(grantId)), eq("state", str("pending")))).fetch()
 
-// 6. a count without fetching rows
-reader.count().from(Grant).where(eq("state", str("live"))).fetch()
+// 6. "who asked about me"
+.from(Access).createdBy(ours()).where(eq("owner", addr(owner))).orderBy(desc("at")).limit(100)
+
+// 7. what was refused on my behalf
+.from(Refusal).createdBy(ours()).where(eq("owner", addr(owner))).orderBy(desc("at"))
 ```
+
+The rest have the same shape: a reviewer's permissions by `verifier`, an owner's live documents
+by `owner` + `state`, single records by `vaultId`, `requestId` and `accessId`, and the receipts
+and refusals under one permission by `grantId`.
 
 Every value is wrapped in its type tag. A bare JS value fails client-side with a very good
 error, and a bare number would be an `i32`.

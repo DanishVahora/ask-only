@@ -10,9 +10,12 @@ can tag an entity with it, so a read by schema alone would return whatever anybo
 question nobody signed, or a receipt that outranks the real one. `$creator`, unlike `$owner`,
 cannot be transferred.
 
-**Nothing in any of these entities is personal data.** Everything readable on Arkiv is public,
-so the only document content stored anywhere is AES-GCM-256 ciphertext encrypted in the owner's
-browser. What is indexed is hashes, addresses, enums, counts and block numbers.
+**Some of this is personal data, and everything readable on Arkiv is public.** The document is
+only ever stored as AES-GCM-256 ciphertext encrypted in the owner's browser. But each question is
+stored word for word with its answer, and so are the document's `label`, the scope the owner
+wrote (`note`) and the reviewer's display name (`verifierName`, copied to `askerName`), which is
+free text and indexed. The rest of what is indexed is ids, hashes, addresses, enums, counts and
+times.
 
 ---
 
@@ -36,7 +39,7 @@ browser. What is indexed is hashes, addresses, enums, counts and block numbers.
 | `ownerKeySig` | `bytes` | | the owner's wallet over that `Session`, which traces `ownerSig` back to them |
 
 `$expiresAt`: owner's choice, default 180 days.
-`cipher` is capped by Arkiv at **128 KiB per create**, the signatures included, which fits a compressed encrypted payslip.
+`cipher` is capped by Arkiv at **128 KiB per create**, the signatures included, which fits an encrypted payslip.
 A `bytes` column can never be indexed, filtered or sorted — so documents cannot be queried by
 content even by accident.
 
@@ -44,8 +47,10 @@ content even by accident.
 
 ## `askonly.grant` — the capability
 
-**The entity whose expiry *is* the permission.** There is no `isActive` flag and no revocation
-job; past `$expiresAt` the network stops returning it and every operation on it fails.
+**The entity whose expiry *is* the permission.** Running out needs no `isActive` flag and no
+job: past `$expiresAt` the network stops returning it and every operation on it fails. Ending one
+early is a signed `Revoke`: the server sets `state` to `revoked`, and keeps the id in memory so an
+answer already queued is refused.
 
 | Attribute | Type | Indexed | Meaning |
 |---|---|---|---|
@@ -53,15 +58,15 @@ job; past `$expiresAt` the network stops returning it and every operation on it 
 | `vaultId` | `str` | ✓ | joins to the document |
 | `owner` | `addr` | ✓ | who granted it |
 | `verifier` | `addr` | ✓ | who may ask |
-| `verifierName` | `str` | ✓ | the ENS name, e.g. `landlord.eth` |
-| `questionSet` | `str` | ✓ | `income` `identity` `tenancy` `employment` |
+| `verifierName` | `str` | ✓ | a display name the owner types, e.g. `Landlord`, or a shortened address if they leave it blank. Free text, never resolved |
+| `questionSet` | `str` | ✓ | `income` `identity` `tenancy` `employment`, or `general`: a coarse tag the browser guesses from the scope |
 | `state` | `str` | ✓ | `live` `revoked`, and `spent` on an old counted grant that ran out |
 | `usesAllowed` | `u64` | ✓ | `0`: no count, the reviewer asks as often as they like while it lasts. Grants before 2026-11-07 carried one, signed under the old `Grant` type, and still hold to it |
 | `usesSpent` | `u64` | ✓ | questions answered or turned down |
 | `issuedAt` | `u64` | ✓ | ms |
 | `diesAt` | `u64` | ✓ | ms, **exactly as the owner signed it**. `$expiresAt` follows it to the next 2s block |
-| `roleBit` | `u256` | | the ENSv2 EAC role the verifier must hold |
-| `labelId` | `u256` | | the ENS resource the role is checked against |
+| `roleBit` | `u256` | | an ENSv2 EAC role bit, picked from `questionSet`. Nothing in the app checks it |
+| `labelId` | `u256` | | the ENS resource a role would be checked against. `0` on every grant the app writes |
 | `threshold` | `str` | | the figure inside the question — never the document's |
 | `note` | `str` | | the owner's own words for what may be asked, or `anything in this document` |
 | `sessionKey` | `str` | | the key in the owner's browser that may answer under this grant, named in their signature |
@@ -70,11 +75,13 @@ job; past `$expiresAt` the network stops returning it and every operation on it 
 | `ownerKeyDiesAt` | `u64` | | seconds, when that key's `Session` ends; `0` with no key |
 | `ownerKeySig` | `bytes` | | the owner's wallet over that `Session`, which traces `ownerSig` back to them |
 
-`$expiresAt`: **required at creation** and is the whole permission.
+`$expiresAt`: **required at creation**, and how the permission runs out.
 `state` is an explicit enum because the network has **no `NOT` and no `!=`** — "not yet spent"
 cannot be expressed, so on an old counted grant `spent` is written at the moment the last use is consumed.
 With no count, what stops a runaway script is the server: at most 10 questions waiting on one
 permission, and 30 in 10 minutes.
+`roleBit` and `labelId` are for `contracts/AskOnlyGate.sol`, deployed on Sepolia, which checks an
+ENSv2 role with `hasRoles`. The app does not call it when a question is asked or answered.
 
 ---
 
@@ -87,7 +94,7 @@ permission, and 30 in 10 minutes.
 | `vaultId` | `str` | ✓ | which document |
 | `owner` | `addr` | ✓ | lets the principal run "who asked about me" |
 | `asker` | `addr` | ✓ | who asked |
-| `askerName` | `str` | ✓ | their ENS name |
+| `askerName` | `str` | ✓ | the grant's `verifierName`, copied |
 | `questionHash` | `str` | ✓ | sha-256 of the exact canonical question |
 | `answer` | `str` | ✓ | `yes` `no` `unknown` |
 | `answerHash` | `str` | ✓ | sha-256 of `{answer, band}`, recomputed by the server before it writes |
@@ -95,11 +102,12 @@ permission, and 30 in 10 minutes.
 | `provider` | `addr` | ✓ | the enclave address that answered |
 | `model` | `str` | ✓ | e.g. `glm-5.3` |
 | `trustMode` | `str` | ✓ | `private` |
-| `verification` | `str` | ✓ | `provider-address` or `request-id-only` — **never `signature`** |
+| `verification` | `str` | ✓ | `provider-address`, or `no-lines-matched` when the browser answered `unknown` without asking the enclave — **never `signature`** |
 | `at` | `u64` | ✓ | ms |
 | `question` | `str` | | the question verbatim |
-| `band` | `str` | | a coarse band where the set allows one. Never an exact figure |
+| `band` | `str` | | one word from a fixed list, e.g. `comfortably above`, or empty. Never a figure |
 | `teeType` | `str` | | e.g. `TDX/dstack`, as reported by `/providers` |
+| `linesSeen` | `str` | | how much of the document the enclave was shown, e.g. `3/17` |
 | `latencyMs` | `u64` | | how long the enclave took |
 | `askerSig` | `bytes` | | the answering key's EIP-712 signature over the Answer. The name is older than its meaning |
 
@@ -122,7 +130,7 @@ field records what we can prove, not what we hoped to.
 | `owner` | `addr` | ✓ | whose document was protected |
 | `asker` | `addr` | ✓ | who tried |
 | `questionHash` | `str` | ✓ | sha-256 of what they tried to ask |
-| `reason` | `str` | ✓ | `no-ens-role` `out-of-set` `uses-exhausted` `expired` `revoked` |
+| `reason` | `str` | ✓ | `out-of-scope`, the enclave's verdict that a question is outside what the owner allowed, or `owner-declined`. The app writes no others |
 | `at` | `u64` | ✓ | ms |
 | `question` | `str` | | verbatim |
 | `detail` | `str` | | human-readable explanation |
@@ -144,10 +152,10 @@ cannot produce an answer — they can only **request** one, and wait.
 | `vaultId` | `str` | ✓ | which document |
 | `owner` | `addr` | ✓ | **whose inbox this lands in** |
 | `asker` | `addr` | ✓ | who is waiting |
-| `askerName` | `str` | ✓ | their ENS name |
-| `questionSet` | `str` | ✓ | income / identity / tenancy / employment |
+| `askerName` | `str` | ✓ | the grant's `verifierName`, copied |
+| `questionSet` | `str` | ✓ | the grant's, copied |
 | `questionHash` | `str` | ✓ | sha-256 of the exact question |
-| `state` | `str` | ✓ | `pending` `answered` `refused` `withdrawn` |
+| `state` | `str` | ✓ | `pending`, then `answered` or `refused`. The schema also names `withdrawn`, which nothing writes |
 | `askedAt` | `u64` | ✓ | ms, **as the asker signed it**. Refused if more than 10 minutes off |
 | `decidedAt` | `u64` | ✓ | ms, `0` until decided |
 | `accessId` | `str` | ✓ | the receipt, once answered |
@@ -155,7 +163,7 @@ cannot produce an answer — they can only **request** one, and wait.
 | `askerSig` | `bytes` | | **EIP-712, signed before being told anything**, by the verifier's wallet or by `askerKey` |
 | `askerKey` | `str` | | a browser key the verifier's wallet let sign for them, or empty |
 | `askKeySig` | `bytes` | | the verifier's wallet over that key, which traces `askerSig` back to them: a `Session` when `askKeyDiesAt` is set, otherwise an `AskKey` (grantId, key, the grant's diesAt) |
-| `askKeyDiesAt` | `u64` | | seconds, when the `Session` ends; `0` for an `AskKey` |
+| `askKeyDiesAt` | `u64` | | seconds, when the `Session` ends; `0` for an `AskKey` or with no key |
 
 `$expiresAt`: 7 days, so the person who asked can still read what came back after the permission ends.
 A question can no longer be answered once its permission has ended: the inbox hides it and `POST /api/answer`
@@ -164,7 +172,9 @@ returns 410.
 `state` is a positive enum for the same reason as everywhere else: the network has no `NOT`, so
 "not yet answered" is inexpressible and `pending` has to be written explicitly.
 
-The queried fields are `owner` + `state` (the inbox) and `requestId` (what the verifier polls).
+The queried fields are `owner` + `state` (the inbox), `grantId` (every question under one
+permission, which the asker's page polls), `grantId` + `state` (how many are waiting, counted)
+and `requestId` (one question).
 
 ---
 
@@ -175,14 +185,14 @@ The queried fields are `owner` + `state` (the inbox) and `requestId` (what the v
 | `vault` | writing wallet | the data principal | `ownerSig`, EIP-712 `Seal` over the ciphertext hash and name. And the ciphertext is useless without their passphrase |
 | `grant` | writing wallet | the data principal | `ownerSig`, EIP-712 over the exact terms, from their wallet or from `ownerKey` with `ownerKeySig` from their wallet |
 | `request` | writing wallet | the verifier | `askerSig`, from their wallet, or from `askerKey` with `askKeySig` from their wallet |
-| `access` | writing wallet | the data principal's device | `askerSig` carries the answering key's EIP-712 signature, and the grant names that key |
-| `refusal` | writing wallet | either party | the request it refers to carries the signature |
+| `access` | writing wallet | the data principal's device | `askerSig` carries the answering key's EIP-712 signature. The grant names that key, or the server checked the owner's `Delegation` for it, which the receipt does not keep |
+| `refusal` | writing wallet | the data principal's device | the server checks the owner's signed `Answer`, with no answer in it, before writing. The refusal keeps no signature; the request it refers to carries the asker's |
 
 **The writing wallet is a paymaster, not an author.** Browser wallets are on Sepolia, not Rabdi,
 so the server pays every write — and verifies an EIP-712 signature recovers to the claimed
 address before it does. It can pay for a record and cannot author one. A forged grant would
-require a forged signature. The ids come from the signed messages, so a signature cannot be
-posted twice either.
+require a forged signature. Grant and question ids come from the signed messages, so those
+signatures cannot be posted twice either.
 
 **One wallet popup a week.** A browser asks its wallet once for a `Session`: the key it generated,
 when it ends (at most 7 days, written out in UTC so the popup is readable), and the line "It cannot
