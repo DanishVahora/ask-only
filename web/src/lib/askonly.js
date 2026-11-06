@@ -119,23 +119,25 @@ export const TYPES = {
     { name: "enclaveRequestId", type: "string" },
     { name: "statement", type: "string" },
   ],
+  Delegation: [
+    { name: "vaultId", type: "string" },
+    { name: "sessionKey", type: "address" },
+    { name: "diesAt", type: "uint256" },
+    { name: "statement", type: "string" },
+  ],
 };
 
 /** The line each signer actually reads in their wallet. */
+
 export const STATEMENTS = {
   grant: "I allow this one question to be asked about my document, until it expires.",
   request: "I am asking this question, and I accept that it is recorded against me.",
   answer: "My device answered this question. The document was not sent.",
+  delegation:
+    "I let this browser answer questions about this one document on my behalf, until it expires.",
 };
 
 /* -------------------------------------------------------------- enclave -- */
-
-export const QUESTION_TEXT = {
-  income: (p) => `Is monthly income above INR ${p}?`,
-  identity: (p) => `Does the name on this document match "${p}"?`,
-  tenancy: (p) => `Is there an active tenancy with rent paid to date as of ${p}?`,
-  employment: (p) => `Has this person been employed for more than ${p} months?`,
-};
 
 /**
  * Call the enclave from this browser, with the owner's own key.

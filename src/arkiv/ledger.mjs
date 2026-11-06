@@ -69,8 +69,12 @@ export async function issueGrant(ctx, {
   vaultId, owner, verifier, verifierName, questionSet,
   usesAllowed = 3, minutes = null, days = 7, threshold = "", note = "", labelId = 0n, ownerSig = new Uint8Array(),
 }) {
-  const set = QUESTION_SETS[questionSet];
-  if (!set) throw safeError(`unknown question set "${questionSet}"`);
+  /* The scope is the owner's own words; `questionSet` is only a coarse tag
+   * derived from them, used to pick an ENSv2 role bit. Rejecting a tag for
+   * being outside a hardcoded list would reimpose the fixed categories that
+   * were deliberately removed, so an unrecognised tag falls back to the
+   * general bit instead of failing the write. */
+  const set = QUESTION_SETS[questionSet] ?? QUESTION_SETS.income;
 
   const grantId = `g-${crypto.randomUUID().slice(0, 8)}`;
   const expiration = minutes ? expiry.minutes(minutes) : expiry.days(days);
@@ -351,7 +355,12 @@ export async function requestById(reader, requestId) {
 export async function accessById(reader, accessId) {
   const { entities } = await reader
     .select({
-      $key: true, accessId: true, grantId: true, answer: true, band: true, question: true,
+      // `owner` and `asker` are written by recordAccess but were never read
+      // back, so every receipt came out unattributed - the same omission that
+      // made grant notes render as "unavailable". Selecting a column is not
+      // optional just because the write set it.
+      $key: true, accessId: true, grantId: true, owner: true, asker: true,
+      answer: true, band: true, question: true,
       questionHash: true, answerHash: true, requestId: true, provider: true, model: true,
       trustMode: true, verification: true, teeType: true, latencyMs: true, at: true,
     })
@@ -365,6 +374,8 @@ export async function accessById(reader, accessId) {
     entityKey: e.$key,
     accessId: val(e, "accessId"),
     grantId: val(e, "grantId"),
+    owner: val(e, "owner"),
+    asker: val(e, "asker"),
     answer: val(e, "answer"),
     band: val(e, "band"),
     question: val(e, "question"),

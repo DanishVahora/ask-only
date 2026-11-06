@@ -9,6 +9,7 @@ import { api, encryptDocument, DOMAIN, TYPES, STATEMENTS, short } from "../lib/a
 import { TOPICS, guessTopic } from "../lib/questions.js";
 import ConnectButton from "../components/ConnectButton.jsx";
 import Inbox from "../components/Inbox.jsx";
+import OnCall from "../components/OnCall.jsx";
 import Sheet from "../components/Sheet.jsx";
 import DropDoc from "../components/DropDoc.jsx";
 import PermissionTicket from "../components/PermissionTicket.jsx";
@@ -215,6 +216,13 @@ export default function Vault() {
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-10">
       <Inbox />
+
+      {/* Only worth offering once there is something to be on call for. */}
+      {vaults.length > 0 && (
+        <div className="mt-10">
+          <OnCall vaults={vaults} />
+        </div>
+      )}
 
       {/* The heading states the actual situation rather than naming the page. */}
       <div className="flex items-end justify-between gap-6 border-b border-line pb-4">

@@ -127,7 +127,7 @@ export function keywords(question, topic) {
  * date got a dead end instead of a choice. Now it reports that it found
  * nothing and hands the decision to the owner, who can see the document.
  */
-export function selectLines(plaintext, question, topic = guessTopic(question)) {
+export function selectLines(plaintext, question, topic = guessTopic(question), { context = 1 } = {}) {
   // topic may legitimately be null - the owner then picks the lines themselves.
   const lines = String(plaintext).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const keys = keywords(question, topic);
@@ -143,8 +143,9 @@ export function selectLines(plaintext, question, topic = guessTopic(question)) {
 
   return {
     lines,
-    suggested: matched,
-    anyMatch: matched.length > 0,
+    suggested,
+    hits: hits.length,
+    anyMatch: suggested.length > 0,
     keywords: keys.slice(0, 12),
   };
 }

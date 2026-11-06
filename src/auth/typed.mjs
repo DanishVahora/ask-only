@@ -103,11 +103,38 @@ export const AnswerTypes = {
   ],
 };
 
+/**
+ * A DELEGATION: the owner authorising one ephemeral key, held only in their
+ * own tab's memory, to sign answers on their behalf.
+ *
+ * Why this exists. Every answer needs the owner's signature, so "answer
+ * automatically" would still have meant a wallet popup per question, and the
+ * person asking would still be waiting on a human to click. That is a UX
+ * failure, not a cryptographic requirement.
+ *
+ * What it does NOT weaken: the passphrase never leaves the device either way,
+ * the enclave still only sees the lines that were chosen, and the delegation
+ * is scoped to ONE vault and expires - it cannot be used to answer about
+ * another document, and it dies on its own.
+ *
+ * The key is generated in the browser, never persisted, and gone on reload.
+ */
+export const DelegationTypes = {
+  Delegation: [
+    { name: "vaultId", type: "string" },
+    { name: "sessionKey", type: "address" },
+    { name: "diesAt", type: "uint256" },
+    { name: "statement", type: "string" },
+  ],
+};
+
 /** The human-readable line each signer sees in their wallet. */
 export const STATEMENTS = {
   grant: "I allow this one question to be asked about my document, until it expires.",
   request: "I am asking this question, and I accept that it is recorded against me.",
   answer: "My device answered this question. The document was not sent.",
+  delegation:
+    "I let this browser answer questions about this one document on my behalf, until it expires.",
 };
 
 export function grantMessage({ vaultId, verifier, questionSet, question, usesAllowed, diesAt }) {
@@ -128,6 +155,15 @@ export function requestMessage({ grantId, questionHash, askedAt }) {
     questionHash: String(questionHash),
     askedAt: BigInt(askedAt),
     statement: STATEMENTS.request,
+  };
+}
+
+export function delegationMessage({ vaultId, sessionKey, diesAt }) {
+  return {
+    vaultId: String(vaultId),
+    sessionKey: getAddress(sessionKey),
+    diesAt: BigInt(diesAt),
+    statement: STATEMENTS.delegation,
   };
 }
 
@@ -214,6 +250,11 @@ export async function requireSignature({ address, types, primaryType, message, s
 /** Everything a browser needs to produce a matching signature. */
 export const clientSpec = {
   domain,
-  types: { Grant: GrantTypes.Grant, Request: RequestTypes.Request, Answer: AnswerTypes.Answer },
+  types: {
+    Grant: GrantTypes.Grant,
+    Request: RequestTypes.Request,
+    Answer: AnswerTypes.Answer,
+    Delegation: DelegationTypes.Delegation,
+  },
   statements: STATEMENTS,
 };

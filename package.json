@@ -22,7 +22,10 @@
     "dev": "node scripts/dev.mjs",
     "api": "node --env-file=.env app/server.mjs",
     "web": "npm --prefix web run dev",
-    "smoke": "node --env-file=.env scripts/smoke.mjs"
+    "smoke": "node --env-file=.env scripts/smoke.mjs",
+    "prove": "node --env-file=.env scripts/twoparty-prove.mjs",
+    "prove:delegation": "node --env-file=.env scripts/delegation-prove.mjs",
+    "prove:questions": "node --env-file=.env scripts/question-matrix.mjs"
   },
   "dependencies": {
     "@arkiv-network/sdk": "^1.0.1",

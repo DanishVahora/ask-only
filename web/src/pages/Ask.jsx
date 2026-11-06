@@ -29,6 +29,16 @@ export default function Ask() {
   const qc = useQueryClient();
 
   const [requestId, setRequestId] = useState(() => sessionStorage.getItem(`req:${grantId}`) || null);
+
+  /* A permission is worth N uses, but the request id was pinned in
+   * sessionStorage and never cleared - so after one question the form never
+   * came back and the remaining uses were unreachable. Asking again drops the
+   * pin and returns to a blank question. */
+  const askAnother = () => {
+    sessionStorage.removeItem(`req:${grantId}`);
+    setRequestId(null);
+    setQuestion("");
+  };
   const [busy, setBusy] = useState(false);
   // The verifier writes their own question now. A grant gives a coarse right -
   // "you may ask about money" - and the exact wording is theirs; the owner sees
@@ -101,6 +111,7 @@ export default function Ask() {
 
   const receipt = req?.receipt;
   const state = req?.state;
+  const usesLeft = Math.max(0, (grant?.usesAllowed ?? 0) - (grant?.usesSpent ?? 0));
 
   return (
     <div className="mx-auto max-w-[760px] px-5 pb-28 pt-10">
@@ -184,6 +195,11 @@ export default function Ask() {
                   <p className="mt-2 text-[0.8125rem] text-ink-50">
                     The owner saw the request and declined. You were told nothing about the document.
                   </p>
+                  {usesLeft > 0 && grant.state === "live" && (
+                    <button onClick={askAnother} className="btn btn-ghost mt-5">
+                      Ask another — {usesLeft} {usesLeft === 1 ? "use" : "uses"} left
+                    </button>
+                  )}
                 </motion.div>
               )}
               {state === "answered" && receipt && (
@@ -196,6 +212,11 @@ export default function Ask() {
                     {receipt.answer.toUpperCase()}
                   </p>
                   {receipt.band && <p className="mt-2 text-[0.9375rem] text-ink-70">{receipt.band}</p>}
+                  {receipt.question && (
+                    <p className="mt-3 font-serif text-[1.0625rem] leading-snug text-ink-50">
+                      “{receipt.question}”
+                    </p>
+                  )}
 
                   <div className="mt-6 grid gap-x-8 gap-y-2 border-t border-line pt-5 text-[0.75rem] sm:grid-cols-2">
                     <Row k="Request id" v={receipt.requestId || "—"} mono />
@@ -206,6 +227,11 @@ export default function Ask() {
                   <p className="mt-4 text-[0.75rem] leading-relaxed text-ink-50">
                     This is the whole of what you received. No document, no key, no figures.
                   </p>
+                  {usesLeft > 0 && grant.state === "live" && (
+                    <button onClick={askAnother} className="btn btn-ghost mt-5">
+                      Ask another — {usesLeft} {usesLeft === 1 ? "use" : "uses"} left
+                    </button>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

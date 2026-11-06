@@ -36,7 +36,8 @@ import {
 } from "../src/arkiv/ledger.mjs";
 import { watchExtensions } from "../src/arkiv/watch.mjs";
 import {
-  GrantTypes, RequestTypes, AnswerTypes, grantMessage, requestMessage, answerMessage,
+  GrantTypes, RequestTypes, AnswerTypes, DelegationTypes,
+  grantMessage, requestMessage, answerMessage, delegationMessage,
   requireSignature, SignatureError, clientSpec,
 } from "../src/auth/typed.mjs";
 import { gateStatus, permissionSurface, mayAsk, addresses, wiringError } from "../src/chain/gate.mjs";
@@ -491,7 +492,11 @@ const routes = {
       if (!r) return json(res, 404, { error: "that request is gone", expired: true });
       const payload = { ...r };
       if (r.state === "answered" && r.accessId) {
-        payload.receipt = await accessById(ctx.reader, r.accessId);
+        // The receipt carries the verdict; the question lives on the request.
+        // A bare "YES" with no question above it is unreadable once the asker
+        // has asked more than one thing.
+        const receipt = await accessById(ctx.reader, r.accessId);
+        payload.receipt = receipt ? { ...receipt, question: r.question } : receipt;
       }
       json(res, 200, payload);
     } catch (e) {
@@ -514,8 +519,20 @@ const routes = {
         return json(res, 409, { error: `that request is already ${request.state}` });
       }
 
-      const owner = await requireSignature({
-        address: b.owner,
+      /* Who signed this answer?
+       *
+       * Normally the owner's wallet. But an owner who is "on call" delegates
+       * to an ephemeral key living in their own tab, so answers come back in
+       * seconds instead of whenever they next look at their phone. Both paths
+       * end at the same question: does this signature trace back to the owner
+       * of THIS document?
+       *
+       * The delegation is checked here, not trusted: the owner's signature
+       * over it is verified, it must name the vault this request is about,
+       * it must name the key that actually signed the answer, and it must not
+       * have expired. Any of those failing is a 403. */
+      const signer = await requireSignature({
+        address: b.signer ?? b.owner,
         types: AnswerTypes,
         primaryType: "Answer",
         message: answerMessage({
@@ -527,6 +544,33 @@ const routes = {
         }),
         signature: b.ownerSig,
       });
+
+      let owner = signer;
+      if (b.delegation) {
+        const d = b.delegation;
+        const delegator = await requireSignature({
+          address: d.owner,
+          types: DelegationTypes,
+          primaryType: "Delegation",
+          message: delegationMessage({
+            vaultId: d.vaultId,
+            sessionKey: d.sessionKey,
+            diesAt: d.diesAt,
+          }),
+          signature: d.sig,
+        });
+        if (String(d.sessionKey).toLowerCase() !== signer.toLowerCase()) {
+          return json(res, 403, { error: "that delegation does not name the key that signed" });
+        }
+        if (String(d.vaultId) !== String(request.vaultId)) {
+          return json(res, 403, { error: "that delegation is for a different document" });
+        }
+        if (Number(d.diesAt) * 1000 <= Date.now()) {
+          return json(res, 403, { error: "that delegation has expired" });
+        }
+        owner = delegator;
+      }
+
       if (owner.toLowerCase() !== String(request.owner).toLowerCase()) {
         return json(res, 403, { error: "only the owner of the document may answer" });
       }

@@ -91,17 +91,34 @@ export function keywords(question, topic) {
  * every line and decides. Keyword matching is too brittle to be the mechanism;
  * it is here to save work, not to be trusted.
  */
-export function selectLines(plaintext, question, topic = guessTopic(question)) {
+export function selectLines(plaintext, question, topic = guessTopic(question), { context = 1 } = {}) {
   const lines = String(plaintext).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const keys = keywords(question, topic);
   const escape = (k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Word-start, not substring: "000" was matching inside a postcode.
   const patterns = keys.map((k) => new RegExp(`\\b${escape(k)}`, "i"));
-  const suggested = [];
+  const hits = [];
   lines.forEach((line, i) => {
-    if (patterns.some((re) => re.test(line))) suggested.push(i);
+    if (patterns.some((re) => re.test(line))) hits.push(i);
   });
-  return { lines, suggested, anyMatch: suggested.length > 0, topic };
+
+  /* Documents are written in blocks, and the detail sits NEXT to the match.
+   *
+   * A resume asked "did he graduate from Dharmsinh Desai University" matched
+   * exactly one line - the university's name - which proves the university
+   * appears in the document and says nothing about graduating. The enclave
+   * correctly answered "unknown" because that is all it was given.
+   *
+   * So a match brings its neighbours: the heading above it and the detail
+   * below. The owner still sees every line and can untick any of them. */
+  const withContext = new Set();
+  for (const i of hits) {
+    for (let j = i - context; j <= i + context; j += 1) {
+      if (j >= 0 && j < lines.length) withContext.add(j);
+    }
+  }
+  const suggested = [...withContext].sort((a, b) => a - b);
+  return { lines, suggested, hits: hits.length, anyMatch: suggested.length > 0, topic };
 }
 
 export function extractFrom(lines, indexes) {
