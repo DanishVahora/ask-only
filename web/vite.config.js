@@ -15,13 +15,18 @@ import tailwindcss from "@tailwindcss/vite";
  * The API server therefore moves to 5174 and we proxy to it, keeping the
  * browser's origin on 5173 where 0G will talk to it.
  */
+// The API port is chosen by scripts/dev.mjs (it walks past anything already
+// bound) and handed over in the environment, so a stale server left running on
+// the default does not silently break the proxy.
+const API_PORT = process.env.ASKONLY_API_PORT || "5174";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    strictPort: true, // fail loudly rather than silently sliding to 5174
+    strictPort: true, // 5173 or nothing - see the note above
     proxy: {
-      "/api": { target: "http://localhost:5175", changeOrigin: false },
+      "/api": { target: `http://localhost:${API_PORT}`, changeOrigin: false },
     },
   },
   build: { outDir: "dist", emptyOutDir: true },

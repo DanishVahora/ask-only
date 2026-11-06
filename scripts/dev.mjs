@@ -13,8 +13,27 @@
  */
 
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import path from "node:path";
 import { existsSync } from "node:fs";
+
+/** First port from `start` that nothing is listening on. */
+function freePort(start, tries = 20) {
+  return new Promise((resolve, reject) => {
+    let port = start;
+    const attempt = () => {
+      if (port >= start + tries) return reject(new Error(`no free port near ${start}`));
+      const s = createServer();
+      s.once("error", () => {
+        port += 1;
+        attempt();
+      });
+      s.once("listening", () => s.close(() => resolve(port)));
+      s.listen(port, "127.0.0.1");
+    };
+    attempt();
+  });
+}
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const isWin = process.platform === "win32";

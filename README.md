@@ -13,12 +13,66 @@ ETHGlobal Mumbai 2026 · From Scratch · MIT
 ## The idea in one paragraph
 
 Your landlord wants to know you earn enough. He does not need your payslip, your PAN, your bank
-account or your address — he needs one bit. You put the document into AskOnly; it encrypts in
-your browser and the ciphertext goes to Arkiv carrying its own death block. You grant the
-landlord a **capability**: one question set, N uses, an expiry. He asks *"is monthly income above
-₹50,000?"* and gets **YES** from a model running inside an Intel TDX enclave — along with a
-receipt he has to sign to see. He asks anything else and it is refused before it reaches your
-document. When the grant expires, Arkiv stops returning it and every operation on it fails.
+account or your address — he needs one bit. You put the document into AskOnly; it is read and
+encrypted **in your browser** and the ciphertext goes to Arkiv carrying its own death block. You
+grant the landlord a **capability**: one question, N uses, an expiry. He asks *"is monthly income
+above ₹50,000?"* — and he waits, because **only your device can answer**. Your device decrypts
+locally, sends a minimal extract to a model inside an Intel TDX enclave, and signs the result.
+He gets **YES**. He asks anything else and it is refused before it reaches your document. When
+the grant expires, Arkiv stops returning it and every operation on it fails.
+
+## Two parties, and a server that cannot speak for either
+
+This is the part that makes it a protocol rather than a demo.
+
+```
+VERIFIER                        ARKIV                      OWNER'S DEVICE
+   │ 1. connect wallet, sign the ask (EIP-712)                   │
+   ├──────────► askonly.request  state=pending ─────────────────►│
+   │                                                             │ 2. it appears
+   │                                                             │    in their inbox
+   │                                          3. decrypt locally │
+   │                                             call the enclave│
+   │                                             sign the answer │
+   │◄────────── askonly.access (answer + both signatures) ◄──────┤
+   │ 4. reads the answer, and only the answer                    │
+```
+
+Only the owner's device holds the passphrase, so only the owner's device can decrypt and ask.
+**The verifier can request an answer and never produce one.** That wait is the security property,
+not a missing feature.
+
+Browser wallets are on Sepolia, not Arkiv's chain, and nobody will fund a second chain to try a
+demo — so **the server pays for every Arkiv write.** That is acceptable only because it cannot
+author one: every record carries an EIP-712 signature, and the server verifies it recovers to the
+claimed address before writing. *The operator pays for a transaction and cannot author one.*
+
+Proven with three fresh wallets, none of them the server — `scripts/twoparty-prove.mjs`, 14/14:
+
+| Attempt | Result |
+|---|---|
+| junk signature | **401** refused |
+| the landlord signing *as* the owner | **401** refused |
+| a stranger using someone else's permission | **403** refused |
+| **the asker answering their own question** | **403** refused |
+| answering an already-decided request | **409** refused |
+| what the verifier receives | an answer — no ciphertext, no key, no document |
+
+## Your file never leaves your machine
+
+PDFs, photos and text all work, and the file itself is never uploaded — not to this server, and
+not to the enclave either.
+
+| You drop | Read by | Where |
+|---|---|---|
+| `.pdf` | pdf.js text layer | your browser |
+| `.png` `.jpg` `.webp` | Tesseract OCR | your browser |
+| `.txt` `.md` `.csv` | directly | your browser |
+
+0G *does* serve an image-capable TeeML model, so a photograph could be sent into the enclave
+whole. We deliberately do not: that would mean the enclave sees the employer, the PAN, the bank
+account and the address. Extracting on the device keeps minimisation intact — **measured, the
+enclave sees 4 of 12 lines.**
 
 **Why bother:** you cannot prove you deleted data. Broadbent & Islam (TCC 2020) proved certified
 deletion is impossible with classical information. So deletion is the wrong primitive.
@@ -67,23 +121,36 @@ Run it again in a few minutes and short-lived grants will have vanished on their
 
 ```bash
 npm install
+npm --prefix web install
 cp .env.example .env     # ARKIV_ACCESS_KEY, DEPLOYER_PRIVATE_KEY, SEPOLIA_RPC_URL
 
 npm run preflight        # proves Arkiv, ENSv2 and the 0G enclave are all live
 npm run compile && npm test       # 19 contract tests
-npm start                # http://localhost:5173
+npm start                # API + web.  Open http://localhost:5173
 ```
+
+You need a browser wallet. Any injected wallet works — MetaMask, Rabby, Coinbase, Brave, OKX,
+Phantom, Frame — discovered via EIP-6963 and listed by name. There is no WalletConnect and no
+RainbowKit, deliberately: both want a cloud `projectId`, which puts a third-party service in the
+critical path of a demo given on venue wifi.
+
+**Trying it alone?** Add a second account in your wallet. Issue the permission to that second
+address, switch to it to ask, then switch back to answer. The app follows whichever account is
+selected.
 
 > **Port 5173 is not arbitrary.** 0G's router allowlists browser origins by *exact origin,
 > including port*. `http://localhost:5173` gets `Access-Control-Allow-Origin` back;
 > `localhost:4319`, `:5174`, `:8080`, `:8000`, `:4200` all get **403**. On any other port the
 > browser cannot reach the enclave and the app silently falls back to relaying through the
 > server — which reintroduces exactly the trusted middleman this design exists to remove.
+> `strictPort` is set so it fails loudly instead of sliding to another port. The API takes the
+> next free port from 5174 and hands it to Vite's proxy.
 
 Proof scripts, each of which measures rather than asserts:
 
 | Command | What it proves |
 |---|---|
+| `node --env-file=.env scripts/twoparty-prove.mjs` | **the two-party protocol end to end — that the server pays for every write and cannot author one** |
 | `node --env-file=.env scripts/arkiv-prove.mjs` | writes a vault, grant, receipt and refusal; measures the event firehose |
 | `node --env-file=.env scripts/arkiv-expiry.mjs <grantId>` | watches a permission die and shows every operation on it fail |
 | `node --env-file=.env scripts/arkiv-retention.mjs` | proves extension is loud and death is silent |

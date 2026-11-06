@@ -14,12 +14,19 @@ npm run preflight          # 14 live checks. If any fail, fix before going on st
 npm start                  # http://localhost:5173  — NOT any other port
 ```
 
-Have open, in this order:
-1. `http://localhost:5173/` — the landing page
-2. `http://localhost:5173/vault.html` — your side
-3. A second window for the verifier, with a wallet connected
+**Two wallet accounts.** Add a second account in your wallet before you start. Account 1 is you,
+Account 2 is the landlord. The app follows whichever is selected, so the whole two-party demo is
+one toggle — no second laptop, no second browser.
 
-Set the grant life to **2 minutes** before you begin. The countdown has to expire on camera.
+Have open:
+1. `http://localhost:5173/` — the landing page
+2. `http://localhost:5173/vault` — your side, on **Account 1**
+3. A second tab on the grant link — the landlord's side, which you'll switch to **Account 2** for
+
+Set the permission to **2 minutes**. The countdown has to expire on camera.
+
+Paste your 0G key into the answer flow once beforehand so the prompt does not appear mid-demo —
+it is kept in that browser only.
 
 ---
 
@@ -52,9 +59,21 @@ Set: `landlord.eth`, **income**, threshold `50000`, 3 uses, **2 minutes**. Press
 > "This is the only thing he will ever be able to ask. It's recorded verbatim, and its hash goes
 > into every receipt."
 
-## 1:20 — The refusal (40s) ← *the beat that wins the track*
+## 1:20 — They ask, and they wait (40s) ← *the beat that makes it a protocol*
 
-Switch to the verifier window. Press **Ask something else**.
+Switch the wallet to **Account 2** and open the link. Press **Sign & ask**.
+
+> "He signs before he is told anything. That signature is what records that he asked."
+
+The screen says **Waiting on the owner's device**. Sit on it for a beat.
+
+> "And now he waits — because he *cannot* answer. Only my device has the passphrase. If he could
+> answer his own question, I'd have handed him the document. That wait is the security property."
+
+Switch back to **Account 1**. The inbox is lit: *"Someone is waiting on you."*
+
+> "It's in my inbox, on my device. And here is the part I like: the only machine on earth that can
+> answer this question is the one holding the passphrase."
 
 > "He asks for my exact salary. Refused — and look where it was refused."
 
@@ -65,9 +84,9 @@ Switch to the verifier window. Press **Ask something else**.
 
 Show the refusal landing in the ledger. **The owner can see what he tried to ask.**
 
-## 2:00 — The answer (50s)
+## 2:00 — You answer (50s)
 
-Press **Ask it**. While it runs (about 6 seconds — don't hide the wait, narrate it):
+Press **Answer it**. While it runs (about 6 seconds — don't hide the wait, narrate it):
 
 > "This is going into an Intel TDX enclave on 0G. Trust mode is private, which routes only to
 > TeeML providers and returns 503 rather than silently downgrading."
@@ -77,18 +96,18 @@ Point at the provider panel:
 > "The same model is also served by Baidu and Tencent with **no enclave at all**. We refuse any
 > provider that isn't TeeML and discard an answer that comes back from one."
 
-Then the signature gate:
+Watch the status line: **"in the enclave · 4 of 12 lines"**.
 
-> "The answer exists, but he can't see it yet. He signs a receipt first — he cannot be told the
-> answer without a record that he asked."
+> "My device decrypted it, narrowed it, and sent four lines. My employer, my PAN, my account
+> number and my address never entered the enclave. Not withheld from the landlord — withheld
+> from the model."
 
-Sign. The stamp lands.
+Sign the answer. Switch to **Account 2**.
 
-> "YES. And look at what the enclave actually saw: **four lines of twelve**. My employer, my
-> PAN, my account number and my address never entered it. Not withheld from the landlord —
-> withheld from the model."
+> "YES. That is the whole of what he received — one bit, a request id, and the enclave's address.
+> No document, no figures, no key."
 
-Point at the request id.
+Point at the request id and the provider address.
 
 ## 2:50 — The death (50s) ← *the thesis*
 
@@ -140,11 +159,23 @@ Now the retention monitor:
 > item 3 actually requires.
 
 **"Doesn't your server see the document?"**
-> Not in local mode, and that's why the port matters. 0G's router allowlists browser origins by
-> exact origin, and `localhost:5173` is on the list — so the browser calls the enclave directly
-> with the owner's own key. The server never has the key or the extract. Run it hosted and the
-> operator *does* become a trusted party, which is why the hosted instance carries a permanent
-> banner saying exactly that, and why `/api/ask/relay` refuses to run on localhost.
+> No, and it cannot author a record either. The browser decrypts and calls the enclave directly —
+> 0G allowlists `localhost:5173` by exact origin, which is why the port matters. The server pays
+> the Arkiv gas because browser wallets are on Sepolia, not Arkiv's chain, and it verifies an
+> EIP-712 signature from the claimed party before every write. The operator pays for a transaction
+> and cannot author one. We tested that directly: a junk signature is 401, the landlord signing as
+> the owner is 401, and the asker trying to answer his own question is 403.
+
+**"What if the owner is offline?"**
+> Then the question waits. That is the honest consequence of only their device holding the key,
+> and we would rather have that than a design where someone else can answer for you. A production
+> version batches pre-authorised questions, which is a UX problem rather than a crypto one.
+
+**"Can it read a real document, not typed text?"**
+> Yes — drop a PDF or a photo. It is read in the browser, pdf.js for text layers and Tesseract for
+> scans. 0G does serve an image-capable TeeML model, so we *could* send the photo into the enclave
+> whole; we deliberately don't, because then the enclave sees the PAN and the address too. Reading
+> it on the device is what keeps it at four lines of twelve.
 
 **"Arkiv doesn't really delete the bytes though."**
 > Correct, and we never say it does — their docs don't claim it either. Expiry means queries stop
