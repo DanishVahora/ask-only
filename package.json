@@ -25,6 +25,10 @@
     "smoke": "node --env-file=.env scripts/smoke.mjs",
     "prove": "node --env-file=.env scripts/twoparty-prove.mjs",
     "prove:delegation": "node --env-file=.env scripts/delegation-prove.mjs",
+    "prove:forget": "node --env-file=.env scripts/forget-prove.mjs",
+    "prove:asking": "node --env-file=.env scripts/asking-prove.mjs",
+    "prove:integrity": "node --env-file=.env scripts/integrity-prove.mjs",
+    "prove:accuracy": "node --env-file=.env scripts/accuracy-matrix.mjs",
     "prove:questions": "node --env-file=.env scripts/question-matrix.mjs"
   },
   "dependencies": {

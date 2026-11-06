@@ -131,8 +131,8 @@ const signDelegation = async ({ by = OWNER, key = SESSION, vault = vaultId, expi
 const answerWith = async ({ signer, delegation, requestId, questionHash }) => {
   const result = {
     answer: "yes",
-    band: "stated on the document",
-    answerHash: await sha256hex(`yes:${requestId}`),
+    band: "",
+    answerHash: await sha256hex(JSON.stringify({ answer: "yes", band: "" })),
     enclaveRequestId: `test-${requestId}`,
     provider: "0xD179F4526064846dE9a9E9D93683AF75CB72E503",
     verification: "TeeML",

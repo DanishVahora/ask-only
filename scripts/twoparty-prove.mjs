@@ -115,7 +115,7 @@ const strangerSig = await STRANGER.signTypedData({
   message: requestMessage({ grantId: grant.data.grantId, questionHash: qHash, askedAt }),
 });
 const strangerAsk = await api("/api/request", {
-  body: { grantId: grant.data.grantId, questionHash: qHash, askedAt, asker: STRANGER.address, askerSig: strangerSig },
+  body: { grantId: grant.data.grantId, question: QUESTION, questionHash: qHash, askedAt, asker: STRANGER.address, askerSig: strangerSig },
 });
 if (strangerAsk.status === 200) bad("a stranger used someone else's permission");
 else ok(`stranger refused (${strangerAsk.status}): ${String(strangerAsk.data.error).slice(0, 60)}…`);
@@ -127,7 +127,7 @@ const askerSig = await LANDLORD.signTypedData({
   message: requestMessage({ grantId: grant.data.grantId, questionHash: qHash, askedAt }),
 });
 const request = await api("/api/request", {
-  body: { grantId: grant.data.grantId, questionHash: qHash, askedAt, asker: LANDLORD.address, askerSig },
+  body: { grantId: grant.data.grantId, question: QUESTION, questionHash: qHash, askedAt, asker: LANDLORD.address, askerSig },
 });
 if (request.status !== 200) { bad(`request failed: ${request.data.error}`); process.exit(1); }
 ok(`request ${request.data.requestId} is ${request.data.state} - waiting on the owner`);
@@ -146,7 +146,7 @@ if ((otherInbox.data.pending ?? []).some((x) => x.requestId === request.data.req
 
 /* ------------------------------------------- 7. only the owner answers --- */
 step(7, "The landlord tries to answer their own question");
-const answerHash = await sha256hex('{"answer":"yes"}');
+const answerHash = await sha256hex(JSON.stringify({ answer: "yes", band: "comfortably above" }));
 const selfAnswer = await LANDLORD.signTypedData({
   domain, types: AnswerTypes, primaryType: "Answer",
   message: answerMessage({
@@ -175,7 +175,7 @@ const realAnswerSig = await OWNER.signTypedData({
 const answered = await api("/api/answer", {
   body: {
     requestId: request.data.requestId, owner: OWNER.address, ownerSig: realAnswerSig,
-    decision: "answered", answer: "yes", band: "above threshold", answerHash,
+    decision: "answered", answer: "yes", band: "comfortably above", answerHash,
     enclaveRequestId: "req-abc123", provider: "0xD179F4526064846dE9a9E9D93683AF75CB72E503",
     model: "glm-5.3", verification: "provider-address", teeType: "TDX/dstack", latencyMs: 5200,
   },
