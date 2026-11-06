@@ -52,7 +52,17 @@ const REAP_GRACE_MS = 60_000; // a permission just issued may not be listed yet
 const KEY_STORE = "askonly.0g";
 const CHANNEL = "askonly-sessions";
 
-export const zeroGKey = () => localStorage.getItem(KEY_STORE) ?? "";
+/* The 0G key this browser answers with: one the owner saved here, or else the key this
+ * machine's own server was started with, which it hands only to browsers on this
+ * machine. Either way this browser calls 0G itself, so a question and the lines read
+ * for it never pass through our server. Owners used to have to paste a key of their
+ * own before anything was answered, and most people have never heard of 0G. */
+let machineKey = import.meta.hot?.data.machineKey ?? "";
+const setMachineKey = (k) => {
+  machineKey = k;
+  if (import.meta.hot) import.meta.hot.data.machineKey = k;
+};
+export const zeroGKey = () => localStorage.getItem(KEY_STORE) || machineKey;
 
 /** One source of truth for what is waiting, shared with every screen that shows it. */
 export const inboxQuery = (owner) => ({
@@ -65,7 +75,7 @@ export const grantsQuery = (owner) => ({
   queryFn: () => api(`/api/grants?owner=${owner}`),
 });
 
-const usable = (g) => g.state === "live" && g.diesAt > Date.now() && g.usesSpent < g.usesAllowed;
+const usable = (g) => g.state === "live" && g.diesAt > Date.now();
 const same = (a, b) => String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
 
 /** A delegation counts only while it lasts. An expired one used to be sent anyway. */
@@ -143,6 +153,23 @@ export function AnsweringProvider({ children }) {
   const kick = useRef(() => {});
   const owner = useRef(address); // whose records the restore loop may load
   const channel = useRef(null);
+
+  // This machine's key, if its server has one. No answer (a hosted copy, an older
+  // server, or no key in .env) leaves things as they were: the owner adds their own.
+  useEffect(() => {
+    let live = true;
+    api("/api/zerog/key")
+      .then((r) => {
+        if (!live || !r?.key) return;
+        setMachineKey(String(r.key));
+        setHasKey(true);
+        kick.current();
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const { data: grantData } = useQuery({
     ...grantsQuery(address),
@@ -533,11 +560,19 @@ export function AnsweringProvider({ children }) {
           return;
         }
         if (e.keyRejected) {
+          // Drop the key that was turned down: the owner's own if they saved one, or else
+          // this machine's. If the other one is still there, this question goes round again.
+          if (localStorage.getItem(KEY_STORE)) localStorage.removeItem(KEY_STORE);
+          else setMachineKey("");
+          if (zeroGKey()) {
+            claimed.current.delete(r.requestId);
+            setRow(r.requestId, null);
+            return;
+          }
           // Every other question would fail the same way, so stop asking until there is
           // a key that works. Saving one sends these round again.
-          localStorage.removeItem(KEY_STORE);
           setHasKey(false);
-          setKeyProblem(zeroGKey() ? null : "Your 0G key was turned down. Add it again to keep answering.");
+          setKeyProblem("0G turned the key down. Add one that works to keep answering.");
           keyFailed.current.add(r.requestId);
           setRow(r.requestId, { state: "failed", detail: "Waiting for a 0G key that works", keyRelated: true });
           return;

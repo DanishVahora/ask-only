@@ -14,7 +14,7 @@ import Mark from "./Mark.jsx";
 
 /* What this page needs from the API. A stale server looks exactly like a bug in
  * whatever you happen to be looking at, and cost an evening before anything said so. */
-const NEEDS_API_BUILD = 6;
+const NEEDS_API_BUILD = 7;
 
 const OWN = [
   { to: "/documents", label: "Documents" },
@@ -147,7 +147,7 @@ export default function Shell({ children }) {
   if (pathname === "/") return children;
 
   const now = Date.now();
-  const alive = (g) => g.state === "live" && g.diesAt > now && g.usesSpent < g.usesAllowed;
+  const alive = (g) => g.state === "live" && g.diesAt > now;
   const counts = {
     "/documents": docs?.vaults?.length ?? 0,
     "/reviewers": (grants?.grants ?? []).filter(alive).length,
