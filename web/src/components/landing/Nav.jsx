@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import Mark from "../Mark.jsx";
+import AppLink from "./AppLink.jsx";
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
@@ -25,9 +26,7 @@ export default function Nav() {
           <a href="#small-print">The small print</a>
           <a href="#questions">Questions</a>
         </nav>
-        <Link to="/documents" className="lp-btn lp-btn-sm">
-          Seal a document
-        </Link>
+        <AppLink className="lp-btn lp-btn-sm" />
       </div>
     </header>
   );

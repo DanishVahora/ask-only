@@ -1,7 +1,8 @@
 import { useRef } from "react";
-import { Link } from "react-router-dom";
 import { motion, useInView } from "motion/react";
 import { Lock } from "lucide-react";
+
+import AppLink from "./AppLink.jsx";
 
 export default function Closing() {
   const ref = useRef(null);
@@ -14,10 +15,7 @@ export default function Closing() {
           <br />
           <em>There is nothing to delete.</em>
         </h2>
-        <Link className="lp-btn" to="/documents">
-          <Lock size={18} strokeWidth={2.2} />
-          Seal a document
-        </Link>
+        <AppLink className="lp-btn" icon={<Lock size={18} strokeWidth={2.2} />} />
         <motion.div
           className="pp-stamp is-marker lp-close-stamp"
           aria-hidden="true"

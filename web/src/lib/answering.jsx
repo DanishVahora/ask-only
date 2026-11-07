@@ -42,6 +42,7 @@ import {
 } from "./askonly.js";
 import { extractStages, enclaveRequest, NEEDS_WIDENING, isAnyTopic } from "./questions.js";
 import { allSessions, putSession, removeSession, wrapSecret, unwrapSecret } from "./keystore.js";
+import { STATIC_SITE } from "./site.js";
 
 const POLL_MS = 2500;
 const PRESENCE_EVERY_MS = 10_000;
@@ -156,7 +157,9 @@ export function AnsweringProvider({ children }) {
 
   // This machine's key, if its server has one. No answer (a hosted copy, an older
   // server, or no key in .env) leaves things as they were: the owner adds their own.
+  // The static copy has no server to ask.
   useEffect(() => {
+    if (STATIC_SITE) return undefined;
     let live = true;
     api("/api/zerog/key")
       .then((r) => {

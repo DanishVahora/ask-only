@@ -8,6 +8,7 @@ import clsx from "clsx";
 
 import { api } from "../lib/askonly.js";
 import { grantsQuery, inboxQuery, useAnswering } from "../lib/answering.jsx";
+import { STATIC_SITE } from "../lib/site.js";
 import ConnectButton from "./ConnectButton.jsx";
 import KeySheet from "./KeySheet.jsx";
 import Mark from "./Mark.jsx";
@@ -120,6 +121,7 @@ export default function Shell({ children }) {
     queryKey: ["health"],
     queryFn: () => api("/api/health"),
     refetchInterval: 20_000,
+    enabled: !STATIC_SITE, // nothing answers /api on the static copy
   });
   const { data: docs } = useQuery({
     queryKey: ["vaults", address],

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { motion, useInView, useReducedMotion } from "motion/react";
 import { ArrowUp, Lock } from "lucide-react";
 import clsx from "clsx";
 
+import AppLink from "./AppLink.jsx";
 import { LINES, linesFor, readFor } from "./payslip.js";
 
 /*
@@ -197,7 +197,7 @@ function Demo() {
         </div>
         {run && !run.word && stage === 3 ? (
           <p className="pp-free">
-            Picked just now, in this page. <Link to="/documents">Seal a document</Link> for the real word.
+            Picked just now, in this page. <AppLink /> for the real word.
           </p>
         ) : (
           <div className="pp-chips">
@@ -226,10 +226,7 @@ export default function Hero() {
         <p className="lp-lede">
           Your landlord needs one word, not your payslip, PAN and bank account.
         </p>
-        <Link className="lp-btn" to="/documents">
-          <Lock size={18} strokeWidth={2.2} />
-          Seal a document
-        </Link>
+        <AppLink className="lp-btn" icon={<Lock size={18} strokeWidth={2.2} />} />
         <p className="lp-note">Sealed in your browser. Our server never sees the document.</p>
       </div>
       <Demo />
