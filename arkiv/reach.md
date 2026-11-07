@@ -120,8 +120,9 @@ Asked directly, because the criterion asks it directly.
 
 **Can they try it today? Yes, on their own machine.** Clone the repo, put the keys in `.env`, run
 `npm start` and open `http://localhost:5173`, the one origin 0G's allowlist accepts. That is also
-why there is no hosted demo: a hosted copy would have to relay through its operator, who would then
-see the lines each question reads.
+why the app has no hosted copy: it would have to relay through its operator, who would then see the
+lines each question reads. Anyone can try the idea in a browser at <https://askonly.vercel.app>,
+where a real 0G enclave answers questions about a public sample payslip.
 
 **Will we keep building it after Mumbai? Yes, and here is the specific reason rather than a
 promise.** India's DPDP Rule 4 — registration

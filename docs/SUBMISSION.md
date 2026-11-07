@@ -136,6 +136,10 @@ sample payslip, the enclave is first shown **7 of 16 lines**. Asked for the PAN,
 **`PAN: [withheld]`**. Only if those cannot settle the question does it widen, up to the whole
 document.
 
+**Live:** <https://askonly.vercel.app>. Ask its sample payslip anything: a server function sends
+the lines the app's own picker chose to a real 0G TeeML enclave, and the stamp shows the answer with
+its 0G request id. The payslip is a public sample, so no one's document goes through it.
+
 *(~235 words.)*
 
 @@@END
@@ -170,10 +174,12 @@ submission, not an appendix to it.
   `scripts/ens-demo.mjs` shows refuse → grant the role → answer on Sepolia. The web app does not
   consult it: its permissions are Arkiv records, and ending one is a signed revoke. So we are not
   entering ENSv2.
-- **A hosted copy would be a trusted operator, so there is no hosted demo.** 0G's CORS allowlist
-  rejects deployed origins, so a hosted instance would have to relay with its own key and could
-  see the extract. `/api/mode` reports that and `/api/ask/relay` refuses to run on localhost, but
-  no screen shows the banner yet, and the app does not use the relay. AskOnly runs on localhost.
+- **A hosted copy of the app would be a trusted operator, so there is none.** 0G's CORS allowlist
+  rejects deployed origins, so a hosted app would have to relay with its own key and could see the
+  extract. `/api/mode` reports that and `/api/ask/relay` refuses to run on localhost, but no screen
+  shows the banner yet, and the app does not use the relay. The app runs on localhost. What is
+  hosted, at askonly.vercel.app, is the landing page: its demo does go through a server function
+  to 0G, about a public sample payslip only.
 - **Questions and verdicts are public.** Every question, its yes, no or unknown, the topic a
   reviewer may ask about, their display name and the document's name are stored in the clear on
   Arkiv. The document never is, and neither is any figure in it.
@@ -302,10 +308,20 @@ Ordered by what blocks a submission. Unchecked items are genuinely outstanding a
 
 **Blocking — submission artefacts**
 
-- [ ] **Demo video, 2–4 minutes, at least 720p** (ETHGlobal Mumbai rules). `docs/DEMO.md` has the
-      script. Keep the answer with a visible `request_id` and a death on camera: set the grant life
-      to 2 minutes before recording.
-- [x] **No live demo link needed.** Only ENSv2 asked for one, and we are not entering ENSv2 (§5).
+- [ ] **Demo video under 3 minutes, at least 720p.** Every 0G track lists "Demo video (under 3
+      mins) and a live demo link" (checked on the live prize page, 7 November); ETHGlobal's own
+      rule is 2–4 minutes, so it has to land between 2:00 and 2:59. `docs/DEMO.md` has the script.
+      Keep an answer with its visible `request_id` on camera.
+- [ ] **Live demo link, required by the 0G track: <https://askonly.vercel.app>.** The landing page,
+      whose demo asks a real 0G enclave about the public sample payslip and shows the request id
+      (`web/api/ask.js`). It needs `ZEROG_API_KEY` set in the Vercel project; check one live answer
+      after the deploy. The app itself only runs on localhost:5173, the one browser origin 0G's
+      router accepts (§5).
+- [ ] **Team member names and contact info (Telegram and X)**, also required by the 0G track, on the
+      submission form.
+- [x] **0G "must show": inference on 0G Private Computer in the main user flow, with request IDs.**
+      Every answer is a 0G call from the owner's browser, and its receipt shows the 0G request id
+      and the enclave's address.
 - [ ] **Two track picks selected on ETHGlobal:** Arkiv — Build on Arkiv (from scratch) · 0G Private
       Computer. Arkiv's prizes count as one partner prize.
 - [ ] Re-run `npm run preflight` and `npm test` on a cold clone immediately before submitting. On 7

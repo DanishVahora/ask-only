@@ -7,6 +7,9 @@ they ask, and where the permission is destroyed by the network rather than by a 
 
 ETHGlobal Mumbai 2026 · From Scratch · MIT
 
+**Live:** <https://askonly.vercel.app>. The landing page; ask its sample payslip anything and a
+real 0G TEE enclave answers, with the request id. The app itself runs on your machine (below).
+
 ---
 
 ## The idea in one paragraph
@@ -262,10 +265,11 @@ A privacy project that overstates is worse than one that does less.
   registrant would run.
 - **The ENS role gate is not used by the app.** It is deployed and tested on Sepolia (above), but
   the app's permissions are Arkiv records, so we are not entering the ENSv2 track.
-- **A hosted copy would be a trusted operator, so there is no hosted demo.** 0G's CORS allowlist
-  rejects deployed origins, so a hosted instance would have to relay with its own key and could see
-  the extract. No screen warns about that yet and the app does not use the relay;
-  `/api/ask/relay` refuses to run on localhost. AskOnly runs on localhost.
+- **A hosted copy of the app would be a trusted operator, so there is none.** 0G's CORS allowlist
+  rejects deployed origins, so a hosted app would have to relay with its own key and could see the
+  extract. No screen warns about that yet and the app does not use the relay; `/api/ask/relay`
+  refuses to run on localhost. The app runs on localhost. The landing page at askonly.vercel.app is
+  hosted, and its demo goes through a server function to 0G, about a public sample payslip only.
 - **The weekly sign-in key sits in the browser.** The key that signs for a wallet for a week is in
   `localStorage`, so anyone who can run script on the page or read the browser profile can act as
   that wallet in AskOnly until it expires; the server cannot end it early. It cannot move funds.
