@@ -5,11 +5,14 @@ import clsx from "clsx";
 
 import AppLink from "./AppLink.jsx";
 import { LINES, linesFor, readFor } from "./payslip.js";
+import { STATIC_SITE } from "../../lib/site.js";
 
 /*
  * Answers that are true of the sample payslip. The lines come from the real picker on
- * every run. Only these words are written here, because a real word would need a real
- * enclave call, so a question somebody types gets the real lines and no made-up word.
+ * every run. These words are only what the page plays by itself. On the hosted copy a
+ * question somebody asks goes to a real 0G enclave (web/api/ask.js) and its real word
+ * and request id come back; anywhere else, or if that fails, a chip shows these words
+ * and a typed question shows the real lines and no made-up word.
  */
 const ASKED = [
   { label: "Afford the rent?", q: "Can they afford rent of ₹25,000 a month?", word: "Yes", note: "Comfortably above", tone: "yes" },
@@ -18,6 +21,11 @@ const ASKED = [
 ];
 
 const TOTAL = LINES.length;
+const ALL = new Set(LINES.map((_, i) => i));
+const LIVE = STATIC_SITE;
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+const shortId = (id) => (String(id).length > 14 ? `${String(id).slice(0, 8)}…${String(id).slice(-4)}` : String(id));
+let runs = 0;
 const INK_MS = TOTAL * 26 + 320; // the last bar finishes
 const READ_MS = 1150; // the marker runs over what's left
 const HOLD_MS = 3400;
@@ -52,24 +60,36 @@ function Demo() {
   const [run, setRun] = useState(() => (reduce ? { ...ASKED[0], keep: linesFor(ASKED[0].q) } : null));
   const [stage, setStage] = useState(reduce ? 3 : 0); // 0 nothing, 1 withheld, 2 reading, 3 done
   const [auto, setAuto] = useState(!reduce);
+  const [readDone, setReadDone] = useState(false);
 
+  // Keyed on the run, not the object: a live answer arriving must not restart the ink.
   useEffect(() => {
     if (!run) {
       setStage(0);
       return undefined;
     }
+    setReadDone(false);
     if (reduce) {
-      setStage(3);
+      setReadDone(true);
+      setStage(run.live ? 2 : 3);
       return undefined;
     }
     setStage(1);
     const a = setTimeout(() => setStage(2), INK_MS);
-    const b = setTimeout(() => setStage(3), INK_MS + READ_MS);
+    const b = setTimeout(() => {
+      setReadDone(true);
+      if (!run.live) setStage(3);
+    }, INK_MS + READ_MS);
     return () => {
       clearTimeout(a);
       clearTimeout(b);
     };
-  }, [run, reduce]);
+  }, [run?.id, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A live run stamps once the marker has run AND the enclave has answered (or failed).
+  useEffect(() => {
+    if (run?.live && readDone && (run.reply || run.failed)) setStage(3);
+  }, [run, readDone]);
 
   // Plays by itself until somebody touches it, and only while it's on screen.
   useEffect(() => {
@@ -86,7 +106,8 @@ function Demo() {
         }
         await wait(280);
         if (dead) return;
-        setRun({ ...a, keep: linesFor(a.q) });
+        runs += 1;
+        setRun({ ...a, id: runs, keep: linesFor(a.q) });
         await wait(INK_MS + READ_MS + HOLD_MS);
         if (dead) return;
         setRun(null);
@@ -101,10 +122,31 @@ function Demo() {
     };
   }, [auto]);
 
+  /* Somebody asked, so on the hosted copy the real enclave answers. The page plays on
+   * while it does; the stamp waits for the real word. */
+  const start = (base) => {
+    runs += 1;
+    const r = { ...base, id: runs, keep: linesFor(base.q), live: LIVE, reply: null, failed: false };
+    setRun(r);
+    if (!LIVE) return;
+    fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: r.q }),
+      signal: AbortSignal.timeout(45_000),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null)
+      .then((reply) => {
+        const ok = reply && ["yes", "no", "unknown"].includes(reply.answer);
+        setRun((cur) => (cur && cur.id === r.id ? { ...cur, reply: ok ? reply : null, failed: !ok } : cur));
+      });
+  };
+
   const ask = (a) => {
     setAuto(false);
     setDraft(a.q);
-    setRun({ ...a, keep: linesFor(a.q) });
+    start(a);
   };
 
   const submit = (e) => {
@@ -112,12 +154,21 @@ function Demo() {
     const q = draft.trim();
     if (!q) return;
     setAuto(false);
-    setRun({ q, keep: linesFor(q) });
+    start({ q });
   };
 
-  const count = run?.keep.size ?? 0;
+  const reply = run?.reply ?? null;
+  // If the enclave had to widen, it read the whole payslip, and the page shows that.
+  const keep = reply?.widened ? ALL : run?.keep;
+  const count = keep?.size ?? 0;
   // What the enclave is actually given for each line it reads, identifiers masked.
-  const shown = useMemo(() => (run ? readFor(run.q) : null), [run]);
+  const shown = useMemo(() => (run && !reply?.widened ? readFor(run.q) : null), [run?.q, reply?.widened]); // eslint-disable-line react-hooks/exhaustive-deps
+  const verdict = reply
+    ? { word: cap(reply.answer), note: reply.band ? cap(reply.band) : "Read in a TDX enclave", tone: reply.answer }
+    : run?.word
+      ? { word: run.word, note: run.note, tone: run.tone }
+      : null;
+  const asking = run?.live && !reply && !run.failed;
   const status = !run
     ? `Sample · ${TOTAL} lines`
     : stage === 1
@@ -125,8 +176,10 @@ function Demo() {
         ? "Nothing narrow to try"
         : `${TOTAL - count} lines withheld`
       : stage === 2
-        ? `Reading ${count} of ${TOTAL} lines`
-        : run.word
+        ? asking && readDone
+          ? "Asking the enclave…"
+          : `Reading ${count} of ${TOTAL} lines`
+        : verdict
           ? "One word sent"
           : `${count} of ${TOTAL} lines picked`;
 
@@ -146,28 +199,28 @@ function Demo() {
               style={{ "--i": i }}
               className={clsx(
                 "pp-line",
-                run && stage >= 1 && !run.keep.has(i) && "is-held",
-                run && stage >= 2 && run.keep.has(i) && "is-read",
+                run && stage >= 1 && !keep.has(i) && "is-held",
+                run && stage >= 2 && keep.has(i) && "is-read",
               )}
             >
               <span className="pp-text">
                 <i className="pp-mark" />
-                <b>{run && stage >= 1 && run.keep.has(i) ? (shown?.get(i) ?? t) : t}</b>
+                <b>{run && stage >= 1 && keep.has(i) ? (shown?.get(i) ?? t) : t}</b>
                 <i className="pp-bar" />
               </span>
             </li>
           ))}
         </ol>
-        {run?.word && stage === 3 && (
+        {verdict && stage === 3 && (
           <motion.div
-            key={run.q}
-            className={clsx("pp-stamp", `is-${run.tone}`)}
+            key={run.id}
+            className={clsx("pp-stamp", `is-${verdict.tone}`)}
             initial={reduce ? false : { scale: 1.7, opacity: 0, rotate: -15 }}
             animate={{ scale: 1, opacity: 1, rotate: -8 }}
             transition={{ duration: 0.17, ease: [0.55, 0, 1, 0.45] }}
           >
-            {run.word}
-            <small>{run.note}</small>
+            {verdict.word}
+            <small>{verdict.note}</small>
           </motion.div>
         )}
       </div>
@@ -176,7 +229,13 @@ function Demo() {
 
       <form className="pp-ticket" onSubmit={submit}>
         <div className="pp-ticket-top">
-          <span>Your landlord asks</span>
+          {reply && stage === 3 ? (
+            <span className="pp-live" title={`Answered by 0G Private Computer, ${reply.teeType || "TDX"} enclave ${reply.provider}, request ${reply.requestId}`}>
+              Live from 0G · request {shortId(reply.requestId)}
+            </span>
+          ) : (
+            <span>Your landlord asks</span>
+          )}
           <Clock />
         </div>
         <div className="pp-ask">
@@ -195,9 +254,10 @@ function Demo() {
             <ArrowUp size={18} strokeWidth={2.4} />
           </button>
         </div>
-        {run && !run.word && stage === 3 ? (
+        {run && !verdict && stage === 3 ? (
           <p className="pp-free">
-            Picked just now, in this page. <AppLink /> for the real word.
+            Picked just now, in this page.{run.failed ? " The live enclave didn't answer this time." : ""}{" "}
+            <AppLink /> for the real word.
           </p>
         ) : (
           <div className="pp-chips">

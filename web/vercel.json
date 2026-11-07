@@ -1,4 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build -- --mode static"
+  "buildCommand": "npm run build -- --mode static",
+  "functions": {
+    "api/ask.js": { "maxDuration": 60 }
+  }
 }

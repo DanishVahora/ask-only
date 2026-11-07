@@ -328,6 +328,26 @@
     color: var(--color-ink-50);
     white-space: nowrap;
   }
+  /* A live answer's receipt, in place of "Your landlord asks", so nothing moves. */
+  .pp-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--color-seal, #0f5438);
+  }
+  .pp-live::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    flex: none;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  @media (max-width: 480px) {
+    .pp-ticket-top:has(.pp-live) > :last-child {
+      display: none;
+    }
+  }
   .pp-ask {
     display: flex;
     align-items: center;
