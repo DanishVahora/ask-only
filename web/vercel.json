@@ -3,5 +3,6 @@
   "buildCommand": "npm run build -- --mode static",
   "functions": {
     "api/ask.js": { "maxDuration": 60 }
-  }
+  },
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

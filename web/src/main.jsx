@@ -17,6 +17,12 @@ import Ask, { Shared } from "./pages/Ask.jsx";
 import { AnsweringProvider } from "./lib/answering.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import SmoothScroll from "./lib/smooth.jsx";
+import { STATIC_SITE } from "./lib/site.js";
+import RunsLocally from "./components/RunsLocally.jsx";
+
+/* On the hosted copy (askonly.vercel.app) there is no server and no localhost, so every
+ * app page says where AskOnly runs instead of offering things that cannot work. */
+const app = (page) => (STATIC_SITE ? <RunsLocally /> : page);
 
 /**
  * Every injected wallet, discovered automatically. Not MetaMask-only.
@@ -75,15 +81,15 @@ container.askOnlyRoot.render(
                 <Page>
                 <Routes>
                   <Route path="/" element={<Suspense fallback={null}><Landing /></Suspense>} />
-                  <Route path="/documents" element={<Documents />} />
-                  <Route path="/reviewers" element={<Reviewers />} />
-                  <Route path="/questions" element={<Questions />} />
-                  <Route path="/shared" element={<Shared />} />
-                  <Route path="/ask" element={<Ask />} />
+                  <Route path="/documents" element={app(<Documents />)} />
+                  <Route path="/reviewers" element={app(<Reviewers />)} />
+                  <Route path="/questions" element={app(<Questions />)} />
+                  <Route path="/shared" element={app(<Shared />)} />
+                  <Route path="/ask" element={app(<Ask />)} />
                   {/* links already handed out, and the old names */}
                   <Route path="/vault" element={<Navigate to="/documents" replace />} />
                   <Route path="/ledger" element={<Navigate to="/questions" replace />} />
-                  <Route path="*" element={<Navigate to="/documents" replace />} />
+                  <Route path="*" element={STATIC_SITE ? <RunsLocally /> : <Navigate to="/documents" replace />} />
                 </Routes>
                 </Page>
               </Shell>
